@@ -1,30 +1,27 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:health_app/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+  testWidgets('Health Metric Screen displays correctly', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(const HealthApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Verify that the main screen title is displayed.
+    expect(find.text('Chỉ số sức khỏe'), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // Verify metric cards are present.
+    expect(find.text('Huyết áp'), findsOneWidget);
+    expect(find.text('Nhịp tim'), findsOneWidget);
+    expect(find.text('Cân nặng'), findsOneWidget);
+    expect(find.text('BMI'), findsOneWidget);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Verify action buttons.
+    expect(find.text('Xem lịch sử'), findsOneWidget);
+    expect(find.text('Xem biểu đồ'), findsOneWidget);
+
+    // Verify FAB is present.
+    expect(find.byIcon(Icons.add), findsOneWidget);
   });
 }
