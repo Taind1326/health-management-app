@@ -27,19 +27,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // Điền sẵn dữ liệu hiện tại
+    String formatInitial(double val) {
+      return val % 1 == 0
+          ? val.toInt().toString()
+          : val.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+    }
+
     _fullNameController = TextEditingController(text: widget.currentProfile.fullName);
     _ageController = TextEditingController(text: widget.currentProfile.age.toString());
-    _heightController = TextEditingController(
-      text: widget.currentProfile.height % 1 == 0
-          ? widget.currentProfile.height.toInt().toString()
-          : widget.currentProfile.height.toString(),
-    );
-    _weightController = TextEditingController(
-      text: widget.currentProfile.weight % 1 == 0
-          ? widget.currentProfile.weight.toInt().toString()
-          : widget.currentProfile.weight.toString(),
-    );
+    _heightController = TextEditingController(text: formatInitial(widget.currentProfile.height));
+    _weightController = TextEditingController(text: formatInitial(widget.currentProfile.weight));
 
     _selectedGender = _genderOptions.contains(widget.currentProfile.gender)
         ? widget.currentProfile.gender
@@ -69,7 +66,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     // heightMeter = heightCm / 100
     // BMI = weight / (heightMeter * heightMeter)
     final double heightMeter = height / 100.0;
+    if (heightMeter <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chiều cao phải lớn hơn 0.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final double calculatedBmi = weight / (heightMeter * heightMeter);
+
+    // Kiểm tra BMI hữu hạn và hợp lệ
+    if (calculatedBmi.isNaN || calculatedBmi.isInfinite || calculatedBmi <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chỉ số BMI không hợp lệ, vui lòng kiểm tra lại chiều cao và cân nặng.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final double roundedBmi = double.parse(calculatedBmi.toStringAsFixed(2));
 
     final updatedProfile = HealthProfile(
@@ -159,6 +178,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     if (parsed == null) {
                       return 'Tuổi phải là số nguyên hợp lệ.';
                     }
+                    if (parsed <= 0 || parsed > 120) {
+                      return 'Tuổi phải nằm trong khoảng từ 1 đến 120.';
+                    }
                     return null;
                   },
                 ),
@@ -208,8 +230,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       return 'Chiều cao không được để trống.';
                     }
                     final parsed = double.tryParse(value.trim());
-                    if (parsed == null) {
+                    if (parsed == null || parsed.isNaN || parsed.isInfinite) {
                       return 'Chiều cao phải là số hợp lệ.';
+                    }
+                    if (parsed <= 0) {
+                      return 'Chiều cao phải lớn hơn 0.';
+                    }
+                    if (parsed > 300) {
+                      return 'Chiều cao không được vượt quá 300 cm.';
                     }
                     return null;
                   },
@@ -232,8 +260,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       return 'Cân nặng không được để trống.';
                     }
                     final parsed = double.tryParse(value.trim());
-                    if (parsed == null) {
+                    if (parsed == null || parsed.isNaN || parsed.isInfinite) {
                       return 'Cân nặng phải là số hợp lệ.';
+                    }
+                    if (parsed <= 0) {
+                      return 'Cân nặng phải lớn hơn 0.';
+                    }
+                    if (parsed > 500) {
+                      return 'Cân nặng không được vượt quá 500 kg.';
                     }
                     return null;
                   },

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'register_screen.dart';
 import '../home/home_screen.dart';
+import '../../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -34,10 +35,12 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final username = _usernameController.text.trim();
-    final password = _passwordController.text;
+    final password = _passwordController.text; // Giữ nguyên mật khẩu, không trim()
 
-    // Kiểm tra với dữ liệu mẫu prototype: user01 / 123456
-    if (username == 'user01' && password == '123456') {
+    // Đăng nhập qua AuthService in-memory
+    final user = AuthService().login(username, password);
+
+    if (user != null) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -165,6 +168,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Mật khẩu không được để trống.';
+                      }
+                      if (value.trim().isEmpty) {
+                        return 'Mật khẩu không được chỉ chứa khoảng trắng.';
                       }
                       return null;
                     },

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/health_profile.dart';
+import '../../services/auth_service.dart';
 import '../auth/login_screen.dart';
 import 'edit_profile_screen.dart';
 import 'health_goal_screen.dart';
@@ -12,32 +13,28 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // Dữ liệu mẫu (Sample data/in-memory) cho prototype
   late HealthProfile _profile;
-  final String _phoneNumber = '0901234567';
+  late String _phoneNumber;
 
   @override
   void initState() {
     super.initState();
-    _initSampleData();
+    _loadProfileData();
   }
 
-  void _initSampleData() {
-    const double height = 170.0; // cm
-    const double weight = 65.0; // kg
-    final double heightInM = height / 100.0;
-    final double calculatedBmi = weight / (heightInM * heightInM);
+  void _loadProfileData() {
+    final authService = AuthService();
+    final user = authService.currentUser;
+    final userId = user?.id ?? 1;
+    _profile = authService.getProfile(userId);
+    _phoneNumber = user?.phone ?? '0901234567';
+  }
 
-    _profile = HealthProfile(
-      id: 1,
-      userId: 1,
-      fullName: 'Nguyễn Văn A',
-      age: 20,
-      gender: 'Nam',
-      height: height,
-      weight: weight,
-      bmi: double.parse(calculatedBmi.toStringAsFixed(2)),
-    );
+  String _formatNumber(double value) {
+    if (value % 1 == 0) {
+      return value.toInt().toString();
+    }
+    return value.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
   }
 
   Future<void> _navigateToEditProfile() async {
@@ -49,6 +46,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (updatedProfile != null && mounted) {
+      AuthService().updateProfile(updatedProfile);
       setState(() {
         _profile = updatedProfile;
       });
@@ -71,11 +69,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _handleLogout() {
-    Navigator.pushReplacement(
+    AuthService().logout();
+    Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(
         builder: (context) => const LoginScreen(),
       ),
+      (route) => false,
     );
   }
 
@@ -171,7 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Chiều cao: ${_profile.height.toInt()} cm  •  Cân nặng: ${_profile.weight.toInt()} kg',
+                        'Chiều cao: ${_formatNumber(_profile.height)} cm  •  Cân nặng: ${_formatNumber(_profile.weight)} kg',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.teal.shade800,
@@ -231,7 +231,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       leading: const Icon(Icons.height, color: Colors.teal),
                       title: const Text('Chiều cao'),
                       trailing: Text(
-                        '${_profile.height.toInt()} cm',
+                        '${_formatNumber(_profile.height)} cm',
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                       ),
                     ),
@@ -240,7 +240,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       leading: const Icon(Icons.scale_outlined, color: Colors.teal),
                       title: const Text('Cân nặng'),
                       trailing: Text(
-                        '${_profile.weight.toInt()} kg',
+                        '${_formatNumber(_profile.weight)} kg',
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                       ),
                     ),

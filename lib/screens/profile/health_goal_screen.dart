@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/health_goal.dart';
+import '../../services/auth_service.dart';
 
 class HealthGoalScreen extends StatefulWidget {
   const HealthGoalScreen({super.key});
@@ -12,19 +13,16 @@ class _HealthGoalScreenState extends State<HealthGoalScreen> {
   final _goalController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  // Dữ liệu mẫu (Sample data/in-memory) cho prototype
-  final List<HealthGoal> _goals = [
-    HealthGoal(
-      id: 1,
-      userId: 1,
-      goal: 'Tập thể dục 30 phút mỗi ngày',
-    ),
-    HealthGoal(
-      id: 2,
-      userId: 1,
-      goal: 'Uống đủ 2 lít nước mỗi ngày',
-    ),
-  ];
+  late List<HealthGoal> _goals;
+  late int _userId;
+
+  @override
+  void initState() {
+    super.initState();
+    final authService = AuthService();
+    _userId = authService.currentUser?.id ?? 1;
+    _goals = List.from(authService.getGoals(_userId));
+  }
 
   @override
   void dispose() {
@@ -39,11 +37,8 @@ class _HealthGoalScreenState extends State<HealthGoalScreen> {
 
     final newGoalText = _goalController.text.trim();
 
-    final newGoal = HealthGoal(
-      id: DateTime.now().millisecondsSinceEpoch,
-      userId: 1,
-      goal: newGoalText,
-    );
+    // Thêm mục tiêu vào AuthService in-memory
+    final newGoal = AuthService().addGoal(_userId, newGoalText);
 
     setState(() {
       _goals.add(newGoal);

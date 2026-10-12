@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../models/user.dart';
+import '../../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -34,15 +34,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    final fullName = _fullNameController.text.trim();
     final phone = _phoneController.text.trim();
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
 
-    // Mô phỏng tạo đối tượng User theo Model User đã định nghĩa
-    final newUser = User(
-      id: DateTime.now().millisecondsSinceEpoch,
-      username: username,
+    final authService = AuthService();
+
+    if (authService.isUsernameTaken(username)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Tên tài khoản "$username" đã tồn tại. Vui lòng chọn tên khác.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Đăng ký lưu vào bộ nhớ dùng chung, liên kết họ tên với hồ sơ người dùng
+    final newUser = authService.register(
+      fullName: fullName,
       phone: phone,
+      username: username,
       password: password,
     );
 
@@ -172,6 +185,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Mật khẩu không được để trống.';
+                      }
+                      if (value.trim().isEmpty) {
+                        return 'Mật khẩu không được chỉ chứa khoảng trắng.';
+                      }
+                      if (value.length < 6) {
+                        return 'Mật khẩu phải có ít nhất 6 ký tự.';
                       }
                       return null;
                     },

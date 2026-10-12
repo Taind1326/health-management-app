@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import '../profile/profile_screen.dart';
 import '../auth/login_screen.dart';
+import '../../services/auth_service.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = AuthService().currentUser;
+    final username = currentUser?.username ?? 'user01';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Trang chủ'),
@@ -43,7 +47,7 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'Tài khoản: user01',
+                    'Tài khoản: $username',
                     style: TextStyle(
                       color: Colors.teal.shade50,
                       fontSize: 13,
@@ -84,12 +88,13 @@ class HomeScreen extends StatelessWidget {
                 style: TextStyle(color: Colors.red),
               ),
               onTap: () {
-                Navigator.pop(context); // Đóng Drawer
-                Navigator.pushReplacement(
+                AuthService().logout();
+                Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(
                     builder: (context) => const LoginScreen(),
                   ),
+                  (route) => false,
                 );
               },
             ),
@@ -103,13 +108,13 @@ class HomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 12),
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.waving_hand, color: Colors.teal, size: 28),
-                  SizedBox(width: 10),
+                  const Icon(Icons.waving_hand, color: Colors.teal, size: 28),
+                  const SizedBox(width: 10),
                   Text(
-                    'Xin chào, user01!',
-                    style: TextStyle(
+                    'Xin chào, $username!',
+                    style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
