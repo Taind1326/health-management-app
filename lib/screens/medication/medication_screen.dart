@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../models/medication.dart';
 
+import 'medication_form_screen.dart';
+
+import '../../models/medication_schedule.dart';
+
+import 'medication_schedule_screen.dart';
+
 class MedicationScreen extends StatefulWidget {
   const MedicationScreen({super.key});
 
@@ -10,6 +16,7 @@ class MedicationScreen extends StatefulWidget {
 }
 
 class _MedicationScreenState extends State<MedicationScreen> {
+  final Map<String, List<MedicationSchedule>> _schedulesByMedication = {};
   // Dữ liệu mẫu phục vụ prototype đợt 1.
   final List<Medication> _medications = [
     const Medication(
@@ -28,6 +35,61 @@ class _MedicationScreenState extends State<MedicationScreen> {
       unit: 'ml',
     ),
   ];
+
+  Future<void> _openMedicationSchedule(Medication medication) async {
+    final result = await Navigator.push<List<MedicationSchedule>>(
+      context,
+      MaterialPageRoute<List<MedicationSchedule>>(
+        builder: (context) => MedicationScheduleScreen(
+          medication: medication,
+          schedules: _schedulesByMedication[medication.id] ?? [],
+        ),
+      ),
+    );
+
+    if (!mounted || result == null) return;
+
+    setState(() {
+      _schedulesByMedication[medication.id] = List.of(result);
+    });
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Đã lưu lịch uống.')));
+  }
+
+  Future<void> _openMedicationForm({Medication? medication}) async {
+    final result = await Navigator.push<Medication>(
+      context,
+      MaterialPageRoute<Medication>(
+        builder: (context) =>
+            MedicationFormScreen(medication: medication, userId: 'demo-user'),
+      ),
+    );
+
+    if (!mounted || result == null) return;
+
+    setState(() {
+      if (medication == null) {
+        _medications.add(result);
+      } else {
+        final index = _medications.indexWhere(
+          (item) => item.id == medication.id,
+        );
+
+        if (index != -1) {
+          _medications[index] = result;
+        }
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          medication == null ? 'Đã thêm thuốc.' : 'Đã cập nhật thuốc.',
+        ),
+      ),
+    );
+  }
 
   void _showUpcomingFeature(String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -60,6 +122,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
 
     setState(() {
       _medications.removeWhere((item) => item.id == medication.id);
+      _schedulesByMedication.remove(medication.id);
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -92,7 +155,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
             ),
             const SizedBox(height: 20),
             FilledButton.icon(
-              onPressed: () => _showUpcomingFeature('Thêm thuốc'),
+              onPressed: () => _openMedicationForm(),
               icon: const Icon(Icons.add),
               label: const Text('Thêm thuốc'),
             ),
@@ -124,7 +187,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
                   tooltip: 'Tùy chọn thuốc',
                   onSelected: (value) {
                     if (value == 'edit') {
-                      _showUpcomingFeature('Sửa thuốc');
+                      _openMedicationForm(medication: medication);
                     } else if (value == 'delete') {
                       _deleteMedication(medication);
                     }
@@ -144,7 +207,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
             ],
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: () => _showUpcomingFeature('Lịch uống thuốc'),
+              onPressed: () => _openMedicationSchedule(medication),
               icon: const Icon(Icons.schedule),
               label: const Text('Lịch uống'),
             ),
@@ -190,7 +253,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
       floatingActionButton: _medications.isEmpty
           ? null
           : FloatingActionButton.extended(
-              onPressed: () => _showUpcomingFeature('Thêm thuốc'),
+              onPressed: () => _openMedicationForm(),
               icon: const Icon(Icons.add),
               label: const Text('Thêm thuốc'),
             ),
