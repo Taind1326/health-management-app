@@ -73,6 +73,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
 
   void _openReminders() {
     final scheduleLabels = <String, String>{};
+    final scheduleDetails = <String, MedicationSchedule>{};
 
     for (final medication in _medications) {
       final schedules = _schedulesByMedication[medication.id] ?? [];
@@ -82,6 +83,8 @@ class _MedicationScreenState extends State<MedicationScreen> {
         final minute = schedule.minute.toString().padLeft(2, '0');
 
         scheduleLabels[schedule.id] = '${medication.name} — $hour:$minute';
+
+        scheduleDetails[schedule.id] = schedule;
       }
     }
 
@@ -91,6 +94,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
         builder: (context) => ReminderScreen(
           reminders: List.of(_reminders),
           medicationSchedules: scheduleLabels,
+          scheduleDetails: scheduleDetails,
           onChanged: (updated) {
             if (!mounted) return;
 
