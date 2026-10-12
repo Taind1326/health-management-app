@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../models/medication.dart';
-
 import 'medication_form_screen.dart';
-
 import '../../models/medication_schedule.dart';
-
 import 'medication_schedule_screen.dart';
+import '../../models/medication_log.dart';
+import 'medication_history_screen.dart';
 
 class MedicationScreen extends StatefulWidget {
   const MedicationScreen({super.key});
@@ -17,6 +16,7 @@ class MedicationScreen extends StatefulWidget {
 
 class _MedicationScreenState extends State<MedicationScreen> {
   final Map<String, List<MedicationSchedule>> _schedulesByMedication = {};
+  final List<MedicationLog> _medicationLogs = [];
   // Dữ liệu mẫu phục vụ prototype đợt 1.
   final List<Medication> _medications = [
     const Medication(
@@ -35,6 +35,38 @@ class _MedicationScreenState extends State<MedicationScreen> {
       unit: 'ml',
     ),
   ];
+
+  void _openMedicationHistory() {
+    final schedules = _schedulesByMedication.values
+        .expand((items) => items)
+        .toList();
+
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => MedicationHistoryScreen(
+          medications: List.of(_medications),
+          schedules: schedules,
+          logs: List.of(_medicationLogs),
+          onLogChanged: (updated) {
+            if (!mounted) return;
+
+            setState(() {
+              final index = _medicationLogs.indexWhere(
+                (log) => log.id == updated.id,
+              );
+
+              if (index == -1) {
+                _medicationLogs.add(updated);
+              } else {
+                _medicationLogs[index] = updated;
+              }
+            });
+          },
+        ),
+      ),
+    );
+  }
 
   Future<void> _openMedicationSchedule(Medication medication) async {
     final result = await Navigator.push<List<MedicationSchedule>>(
@@ -225,7 +257,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
         actions: [
           IconButton(
             tooltip: 'Lịch sử uống thuốc',
-            onPressed: () => _showUpcomingFeature('Lịch sử uống thuốc'),
+            onPressed: _openMedicationHistory,
             icon: const Icon(Icons.history),
           ),
           IconButton(
