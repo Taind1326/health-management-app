@@ -59,8 +59,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     final fullName = _fullNameController.text.trim();
     final age = int.parse(_ageController.text.trim());
-    final height = double.parse(_heightController.text.trim());
-    final weight = double.parse(_weightController.text.trim());
+    final heightNormalized = _heightController.text.trim().replaceAll(',', '.');
+    final weightNormalized = _weightController.text.trim().replaceAll(',', '.');
+    final height = double.parse(heightNormalized);
+    final weight = double.parse(weightNormalized);
 
     // Tính lại BMI:
     // heightMeter = heightCm / 100
@@ -229,7 +231,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     if (value == null || value.trim().isEmpty) {
                       return 'Chiều cao không được để trống.';
                     }
-                    final parsed = double.tryParse(value.trim());
+                    final normalized = value.trim().replaceAll(',', '.');
+                    final parsed = double.tryParse(normalized);
                     if (parsed == null || parsed.isNaN || parsed.isInfinite) {
                       return 'Chiều cao phải là số hợp lệ.';
                     }
@@ -259,7 +262,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     if (value == null || value.trim().isEmpty) {
                       return 'Cân nặng không được để trống.';
                     }
-                    final parsed = double.tryParse(value.trim());
+                    final normalized = value.trim().replaceAll(',', '.');
+                    final parsed = double.tryParse(normalized);
                     if (parsed == null || parsed.isNaN || parsed.isInfinite) {
                       return 'Cân nặng phải là số hợp lệ.';
                     }

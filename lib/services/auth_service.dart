@@ -58,6 +58,15 @@ class AuthService {
     ];
   }
 
+  // Reset dữ liệu về trạng thái mẫu ban đầu (phục vụ unit/widget test)
+  void resetForTesting() {
+    _users.clear();
+    _profiles.clear();
+    _goals.clear();
+    _currentUser = null;
+    _initSampleData();
+  }
+
   // Đăng nhập tài khoản
   User? login(String username, String password) {
     for (final user in _users) {
