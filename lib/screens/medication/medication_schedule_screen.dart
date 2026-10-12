@@ -23,6 +23,7 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
 
   TimeOfDay _time = const TimeOfDay(hour: 8, minute: 0);
   DateTime _startDate = DateUtils.dateOnly(DateTime.now());
+  DateTime? _endDate;
   MedicationRepeat _repeat = MedicationRepeat.daily;
   final Set<int> _weekdays = {};
 
@@ -77,7 +78,26 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
 
     if (!mounted || selected == null) return;
 
-    setState(() => _startDate = selected);
+    setState(() {
+      _startDate = selected;
+
+      if (_endDate != null && _endDate!.isBefore(_startDate)) {
+        _endDate = null;
+      }
+    });
+  }
+
+  Future<void> _pickEndDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? _startDate,
+      firstDate: _startDate,
+      lastDate: DateTime(_startDate.year + 5, 12, 31),
+    );
+
+    if (!mounted || selected == null) return;
+
+    setState(() => _endDate = selected);
   }
 
   void _addSchedule() {
@@ -104,12 +124,14 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
         ? (_weekdays.toList()..sort())
         : <int>[];
 
+    final endDate = _repeat == MedicationRepeat.once ? null : _endDate;
     final duplicate = _schedules.any((schedule) {
       final existingDays = List<int>.of(schedule.weekdays)..sort();
 
       return schedule.hour == _time.hour &&
           schedule.minute == _time.minute &&
           DateUtils.isSameDay(schedule.startDate, _startDate) &&
+          DateUtils.isSameDay(schedule.endDate, endDate) &&
           schedule.repeat == _repeat &&
           existingDays.join(',') == days.join(',');
     });
@@ -125,6 +147,7 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
           id: 'schedule-${DateTime.now().microsecondsSinceEpoch}',
           medicationId: widget.medication.id,
           startDate: _startDate,
+          endDate: endDate,
           hour: _time.hour,
           minute: _time.minute,
           repeat: _repeat,
@@ -199,6 +222,26 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
               ],
             ),
           ),
+          if (_repeat != MedicationRepeat.once) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _pickEndDate,
+              icon: const Icon(Icons.event_outlined),
+              label: Text(
+                _endDate == null
+                    ? 'Ngày kết thúc: chưa đặt'
+                    : 'Kết thúc: ${_formatDate(_endDate!)}',
+              ),
+            ),
+            if (_endDate != null)
+              TextButton(
+                onPressed: () {
+                  setState(() => _endDate = null);
+                },
+                child: const Text('Bỏ ngày kết thúc'),
+              ),
+          ],
+
           if (_repeat == MedicationRepeat.selectedWeekdays)
             Wrap(
               spacing: 8,
@@ -240,7 +283,8 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
                 title: Text(_formatTime(schedule.hour, schedule.minute)),
                 subtitle: Text(
                   '${_repeatLabel(schedule)}\n'
-                  'Từ ${_formatDate(schedule.startDate)}',
+                  'Từ ${_formatDate(schedule.startDate)}'
+                  '${schedule.endDate == null ? '' : ' đến ${_formatDate(schedule.endDate!)}'}',
                 ),
                 isThreeLine: true,
                 trailing: IconButton(
