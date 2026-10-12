@@ -405,7 +405,7 @@ class _ReminderFormScreenState extends State<_ReminderFormScreen> {
 
     final reminder = Reminder(
       id: existing?.id ?? 'reminder-${now.microsecondsSinceEpoch}',
-      userId: existing?.userId ?? 'demo-user',
+      userId: existing?.userId ?? 1,
       title: _titleController.text.trim().replaceAll(RegExp(r'\s+'), ' '),
       type: _type,
       startDate:

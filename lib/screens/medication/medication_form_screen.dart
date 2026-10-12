@@ -4,7 +4,7 @@ import '../../models/medication.dart';
 
 class MedicationFormScreen extends StatefulWidget {
   final Medication? medication;
-  final String userId;
+  final int userId;
 
   const MedicationFormScreen({
     super.key,
