@@ -6,6 +6,8 @@ import '../../models/medication_schedule.dart';
 import 'medication_schedule_screen.dart';
 import '../../models/medication_log.dart';
 import 'medication_history_screen.dart';
+import '../../models/reminder.dart';
+import 'reminder_screen.dart';
 
 class MedicationScreen extends StatefulWidget {
   const MedicationScreen({super.key});
@@ -17,6 +19,7 @@ class MedicationScreen extends StatefulWidget {
 class _MedicationScreenState extends State<MedicationScreen> {
   final Map<String, List<MedicationSchedule>> _schedulesByMedication = {};
   final List<MedicationLog> _medicationLogs = [];
+  final List<Reminder> _reminders = [];
   // Dữ liệu mẫu phục vụ prototype đợt 1.
   final List<Medication> _medications = [
     const Medication(
@@ -68,6 +71,40 @@ class _MedicationScreenState extends State<MedicationScreen> {
     );
   }
 
+  void _openReminders() {
+    final scheduleLabels = <String, String>{};
+
+    for (final medication in _medications) {
+      final schedules = _schedulesByMedication[medication.id] ?? [];
+
+      for (final schedule in schedules) {
+        final hour = schedule.hour.toString().padLeft(2, '0');
+        final minute = schedule.minute.toString().padLeft(2, '0');
+
+        scheduleLabels[schedule.id] = '${medication.name} — $hour:$minute';
+      }
+    }
+
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => ReminderScreen(
+          reminders: List.of(_reminders),
+          medicationSchedules: scheduleLabels,
+          onChanged: (updated) {
+            if (!mounted) return;
+
+            setState(() {
+              _reminders
+                ..clear()
+                ..addAll(updated);
+            });
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _openMedicationSchedule(Medication medication) async {
     final result = await Navigator.push<List<MedicationSchedule>>(
       context,
@@ -82,7 +119,18 @@ class _MedicationScreenState extends State<MedicationScreen> {
     if (!mounted || result == null) return;
 
     setState(() {
+      final oldIds = (_schedulesByMedication[medication.id] ?? [])
+          .map((schedule) => schedule.id)
+          .toSet();
+
+      final newIds = result.map((schedule) => schedule.id).toSet();
+      final removedIds = oldIds.difference(newIds);
+
       _schedulesByMedication[medication.id] = List.of(result);
+
+      _reminders.removeWhere(
+        (reminder) => removedIds.contains(reminder.medicationScheduleId),
+      );
     });
 
     ScaffoldMessenger.of(context)
@@ -123,37 +171,43 @@ class _MedicationScreenState extends State<MedicationScreen> {
     );
   }
 
-  void _showUpcomingFeature(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature sẽ được bổ sung ở bước tiếp theo.')),
-    );
-  }
-
   Future<void> _deleteMedication(Medication medication) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Xóa thuốc'),
-          content: Text('Bạn muốn xóa "${medication.name}" khỏi danh sách?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Hủy'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Xóa'),
-            ),
-          ],
-        );
-      },
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Xóa thuốc'),
+        content: Text(
+          'Bạn muốn xóa "${medication.name}"?\n\n'
+          'Các lịch uống và nhắc nhở liên quan cũng sẽ bị xóa. '
+          'Lịch sử đã ghi nhận được giữ lại.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
     );
 
     if (!mounted || confirmed != true) return;
 
+    final removedScheduleIds = (_schedulesByMedication[medication.id] ?? [])
+        .map((schedule) => schedule.id)
+        .toSet();
+
     setState(() {
+      _reminders.removeWhere(
+        (reminder) =>
+            removedScheduleIds.contains(reminder.medicationScheduleId),
+      );
+
       _medications.removeWhere((item) => item.id == medication.id);
+
       _schedulesByMedication.remove(medication.id);
     });
 
@@ -262,7 +316,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
           ),
           IconButton(
             tooltip: 'Quản lý nhắc nhở',
-            onPressed: () => _showUpcomingFeature('Quản lý nhắc nhở'),
+            onPressed: _openReminders,
             icon: const Icon(Icons.notifications_outlined),
           ),
         ],
