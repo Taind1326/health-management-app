@@ -100,16 +100,120 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
     setState(() => _endDate = selected);
   }
 
+  DateTime _dateOnly(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
+  // Dùng ngày lịch thay vì cộng 24 giờ để tránh lệch ngày
+  // khi thiết bị ở múi giờ có đổi giờ mùa hè.
+  DateTime _nextDay(DateTime date) {
+    return DateTime(date.year, date.month, date.day + 1);
+  }
+
+  DateTime? _effectiveEnd(MedicationSchedule schedule) {
+    if (schedule.repeat == MedicationRepeat.once) {
+      return _dateOnly(schedule.startDate);
+    }
+
+    return schedule.endDate == null ? null : _dateOnly(schedule.endDate!);
+  }
+
+  bool _occursOn(MedicationSchedule schedule, DateTime day) {
+    final date = _dateOnly(day);
+    final start = _dateOnly(schedule.startDate);
+    final end = _effectiveEnd(schedule);
+
+    if (date.isBefore(start)) return false;
+    if (end != null && date.isAfter(end)) return false;
+
+    switch (schedule.repeat) {
+      case MedicationRepeat.once:
+        return date == start;
+      case MedicationRepeat.daily:
+        return true;
+      case MedicationRepeat.selectedWeekdays:
+        return schedule.weekdays.contains(date.weekday);
+    }
+  }
+
+  bool _hasOccurrence(MedicationSchedule schedule) {
+    var day = _dateOnly(schedule.startDate);
+    final end = _effectiveEnd(schedule);
+
+    // Lịch theo thứ lặp lại mỗi tuần: chỉ cần xét tối đa 7 ngày.
+    for (var i = 0; i < 7; i++) {
+      if (end != null && day.isAfter(end)) return false;
+      if (_occursOn(schedule, day)) return true;
+
+      day = _nextDay(day);
+    }
+
+    return false;
+  }
+
+  bool _overlaps(MedicationSchedule first, MedicationSchedule second) {
+    if (first.medicationId != second.medicationId) return false;
+
+    if (first.hour != second.hour || first.minute != second.minute) {
+      return false;
+    }
+
+    final firstStart = _dateOnly(first.startDate);
+    final secondStart = _dateOnly(second.startDate);
+
+    // Bắt đầu khoảng giao nhau.
+    var day = firstStart.isAfter(secondStart) ? firstStart : secondStart;
+
+    final firstEnd = _effectiveEnd(first);
+    final secondEnd = _effectiveEnd(second);
+
+    // Kết thúc khoảng giao nhau; null nghĩa là không giới hạn.
+    DateTime? end;
+
+    if (firstEnd == null) {
+      end = secondEnd;
+    } else if (secondEnd == null) {
+      end = firstEnd;
+    } else {
+      end = firstEnd.isBefore(secondEnd) ? firstEnd : secondEnd;
+    }
+
+    if (end != null && day.isAfter(end)) return false;
+
+    // Trong khoảng giao nhau, xét tối đa một tuần.
+    for (var i = 0; i < 7; i++) {
+      if (end != null && day.isAfter(end)) return false;
+
+      if (_occursOn(first, day) && _occursOn(second, day)) {
+        return true;
+      }
+
+      day = _nextDay(day);
+    }
+
+    return false;
+  }
+
   void _addSchedule() {
     if (_repeat == MedicationRepeat.selectedWeekdays && _weekdays.isEmpty) {
       _showMessage('Vui lòng chọn ít nhất một ngày trong tuần.');
       return;
     }
 
+    final startDate = _dateOnly(_startDate);
+    final endDate = _repeat == MedicationRepeat.once
+        ? null
+        : (_endDate == null ? null : _dateOnly(_endDate!));
+
+    if (endDate != null && endDate.isBefore(startDate)) {
+      _showMessage('Ngày kết thúc không được trước ngày bắt đầu.');
+      return;
+    }
+
     final scheduledAt = DateTime(
-      _startDate.year,
-      _startDate.month,
-      _startDate.day,
+      startDate.year,
+      startDate.month,
+      startDate.day,
       _time.hour,
       _time.minute,
     );
@@ -124,36 +228,36 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
         ? (_weekdays.toList()..sort())
         : <int>[];
 
-    final endDate = _repeat == MedicationRepeat.once ? null : _endDate;
-    final duplicate = _schedules.any((schedule) {
-      final existingDays = List<int>.of(schedule.weekdays)..sort();
+    final newSchedule = MedicationSchedule(
+      id: 'schedule-${DateTime.now().microsecondsSinceEpoch}',
+      medicationId: widget.medication.id,
+      startDate: startDate,
+      endDate: endDate,
+      hour: _time.hour,
+      minute: _time.minute,
+      repeat: _repeat,
+      weekdays: days,
+    );
 
-      return schedule.hour == _time.hour &&
-          schedule.minute == _time.minute &&
-          DateUtils.isSameDay(schedule.startDate, _startDate) &&
-          DateUtils.isSameDay(schedule.endDate, endDate) &&
-          schedule.repeat == _repeat &&
-          existingDays.join(',') == days.join(',');
-    });
+    if (!_hasOccurrence(newSchedule)) {
+      _showMessage('Khoảng ngày đã chọn không có ngày uống phù hợp.');
+      return;
+    }
 
-    if (duplicate) {
-      _showMessage('Lịch uống này đã có trong danh sách.');
+    final overlaps = _schedules.any(
+      (existing) => _overlaps(existing, newSchedule),
+    );
+
+    if (overlaps) {
+      _showMessage(
+        'Thuốc này đã có lịch cùng giờ/phút '
+        'vào ít nhất một ngày trong khoảng đã chọn.',
+      );
       return;
     }
 
     setState(() {
-      _schedules.add(
-        MedicationSchedule(
-          id: 'schedule-${DateTime.now().microsecondsSinceEpoch}',
-          medicationId: widget.medication.id,
-          startDate: _startDate,
-          endDate: endDate,
-          hour: _time.hour,
-          minute: _time.minute,
-          repeat: _repeat,
-          weekdays: days,
-        ),
-      );
+      _schedules.add(newSchedule);
     });
 
     _showMessage('Đã thêm lịch. Bấm Lưu để áp dụng thay đổi.');
