@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../models/food.dart';
+import 'nutrition_store.dart';
+
 class FoodDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> food;
+  final Food food;
 
   const FoodDetailScreen({
     super.key,
@@ -14,7 +17,7 @@ class FoodDetailScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Chi tiết món ăn'),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -34,28 +37,34 @@ class FoodDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              food['name'],
+              food.name,
               style: const TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.bold,
               ),
             ),
+            const SizedBox(height: 8),
+            const Text('Giá trị dinh dưỡng trên một khẩu phần'),
             const SizedBox(height: 20),
             _InfoRow(
               title: 'Calo',
-              value: '${food['calories']} kcal',
+              value:
+                  '${formatNutritionValue(food.calories)} kcal',
             ),
             _InfoRow(
               title: 'Protein',
-              value: '${food['protein']} g',
+              value:
+                  '${formatNutritionValue(food.protein)} g',
             ),
             _InfoRow(
               title: 'Carb',
-              value: '${food['carb']} g',
+              value:
+                  '${formatNutritionValue(food.carb)} g',
             ),
             _InfoRow(
               title: 'Fat',
-              value: '${food['fat']} g',
+              value:
+                  '${formatNutritionValue(food.fat)} g',
             ),
           ],
         ),

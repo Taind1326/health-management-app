@@ -1,14 +1,40 @@
 import 'package:flutter/material.dart';
+
+import '../../models/meal.dart';
 import 'add_meal_screen.dart';
 import 'food_list_screen.dart';
-import 'water_screen.dart';
+import 'nutrition_store.dart';
 import 'water_history_screen.dart';
+import 'water_screen.dart';
 
-class NutritionScreen extends StatelessWidget {
+class NutritionScreen extends StatefulWidget {
   const NutritionScreen({super.key});
 
   @override
+  State<NutritionScreen> createState() =>
+      _NutritionScreenState();
+}
+
+class _NutritionScreenState extends State<NutritionScreen> {
+  final NutritionStore store = NutritionStore.instance;
+
+  Future<void> _openScreen(Widget screen) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => screen,
+      ),
+    );
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final todayMeals = store.todayMeals;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dinh dưỡng & Nước'),
@@ -27,13 +53,7 @@ class NutritionScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Hôm nay',
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 15,
-              ),
-            ),
+            const Text('Tổng hợp các bữa ăn trong ngày'),
             const SizedBox(height: 16),
             Container(
               width: double.infinity,
@@ -42,20 +62,17 @@ class NutritionScreen extends StatelessWidget {
                 color: Colors.green.shade50,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Column(
+              child: Column(
                 children: [
                   Text(
-                    '1.350 kcal',
-                    style: TextStyle(
+                    '${formatNutritionValue(store.totalCaloriesToday)} kcal',
+                    style: const TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Tổng năng lượng trong ngày - dữ liệu mẫu',
-                    textAlign: TextAlign.center,
-                  ),
+                  const SizedBox(height: 8),
+                  const Text('Tổng năng lượng hôm nay'),
                 ],
               ),
             ),
@@ -65,23 +82,26 @@ class NutritionScreen extends StatelessWidget {
                 Expanded(
                   child: _NutritionCard(
                     title: 'Protein',
-                    value: '65 g',
+                    value:
+                        '${formatNutritionValue(store.totalProteinToday)} g',
                     icon: Icons.fitness_center,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _NutritionCard(
                     title: 'Carb',
-                    value: '150 g',
+                    value:
+                        '${formatNutritionValue(store.totalCarbToday)} g',
                     icon: Icons.grain,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _NutritionCard(
                     title: 'Fat',
-                    value: '45 g',
+                    value:
+                        '${formatNutritionValue(store.totalFatToday)} g',
                     icon: Icons.opacity,
                   ),
                 ),
@@ -89,30 +109,24 @@ class NutritionScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const Text(
-              'Bữa ăn',
+              'Các bữa ăn',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 10),
-            _MealCard(
-              title: 'Bữa sáng',
-              food: 'Bánh mì trứng',
-              calories: '350 kcal',
-            ),
-            const SizedBox(height: 10),
-            _MealCard(
-              title: 'Bữa trưa',
-              food: 'Cơm gà',
-              calories: '600 kcal',
-            ),
-            const SizedBox(height: 10),
-            _MealCard(
-              title: 'Bữa tối',
-              food: 'Cơm cá',
-              calories: '400 kcal',
-            ),
+            if (todayMeals.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Bạn chưa ghi nhận bữa ăn nào hôm nay.',
+                  ),
+                ),
+              )
+            else
+              ...todayMeals.map(_buildMealCard),
             const SizedBox(height: 24),
             const Text(
               'Chức năng',
@@ -125,55 +139,65 @@ class NutritionScreen extends StatelessWidget {
             _ActionButton(
               icon: Icons.add_circle_outline,
               title: 'Thêm bữa ăn',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AddMealScreen(),
-                  ),
-                );
-              },
+              onTap: () => _openScreen(
+                const AddMealScreen(),
+              ),
             ),
-            const SizedBox(height: 10),
             _ActionButton(
               icon: Icons.restaurant_menu,
               title: 'Danh sách món ăn',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const FoodListScreen(),
-                  ),
-                );
-              },
+              onTap: () => _openScreen(
+                const FoodListScreen(),
+              ),
             ),
-            const SizedBox(height: 10),
             _ActionButton(
               icon: Icons.water_drop,
               title: 'Theo dõi nước',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const WaterScreen(),
-                  ),
-                );
-              },
+              onTap: () => _openScreen(
+                const WaterScreen(),
+              ),
             ),
-            const SizedBox(height: 10),
             _ActionButton(
               icon: Icons.history,
               title: 'Lịch sử nước',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const WaterHistoryScreen(),
-                  ),
-                );
-              },
+              onTap: () => _openScreen(
+                const WaterHistoryScreen(),
+              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMealCard(Meal meal) {
+    final details = store.detailsForMeal(meal.id);
+
+    final foods = details.map((detail) {
+      final food = store.foodById(detail.foodId);
+
+      if (food == null) {
+        return 'Không tìm thấy món ăn';
+      }
+
+      return '${food.name} × '
+          '${formatNutritionValue(detail.quantity)}';
+    }).join(', ');
+
+    return Card(
+      child: ListTile(
+        leading: const CircleAvatar(
+          child: Icon(Icons.restaurant),
+        ),
+        title: Text(
+          meal.mealType,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(foods),
+        trailing: Text(
+          '${formatNutritionValue(store.caloriesForMeal(meal))} kcal',
         ),
       ),
     );
@@ -194,7 +218,7 @@ class _NutritionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -202,10 +226,7 @@ class _NutritionCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(
-            icon,
-            color: Colors.green,
-          ),
+          Icon(icon, color: Colors.green),
           const SizedBox(height: 6),
           Text(
             title,
@@ -216,37 +237,6 @@ class _NutritionCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(value),
         ],
-      ),
-    );
-  }
-}
-
-class _MealCard extends StatelessWidget {
-  final String title;
-  final String food;
-  final String calories;
-
-  const _MealCard({
-    required this.title,
-    required this.food,
-    required this.calories,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: const CircleAvatar(
-          child: Icon(Icons.restaurant),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        subtitle: Text(food),
-        trailing: Text(calories),
       ),
     );
   }
@@ -267,12 +257,15 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon),
-        label: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Text(title),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: OutlinedButton.icon(
+          onPressed: onTap,
+          icon: Icon(icon),
+          label: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Text(title),
+          ),
         ),
       ),
     );

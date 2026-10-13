@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'nutrition_store.dart';
 import 'water_history_screen.dart';
 
 class WaterScreen extends StatefulWidget {
@@ -9,28 +11,56 @@ class WaterScreen extends StatefulWidget {
 }
 
 class _WaterScreenState extends State<WaterScreen> {
-  int currentWater = 1000;
-  final int waterGoal = 2000;
+  final NutritionStore store = NutritionStore.instance;
 
-  void addWater(int amount) {
-    setState(() {
-      currentWater += amount;
+  void _addWater(int amount) {
+    store.addWater(amount);
+    setState(() {});
+  }
 
-      if (currentWater > waterGoal) {
-        currentWater = waterGoal;
-      }
-    });
+  Future<void> _editGoal() async {
+    final newGoal = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        return const _WaterGoalDialog();
+      },
+    );
+
+    if (!mounted) return;
+
+    if (newGoal != null) {
+      store.updateWaterGoal(newGoal);
+      setState(() {});
+    }
+  }
+
+  Future<void> _openHistory() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => const WaterHistoryScreen(),
+      ),
+    );
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    double progress = currentWater / waterGoal;
+    final currentWater = store.todayWaterTotalMl;
+    final waterGoal = store.waterGoalMl;
+
+    final progress = waterGoal > 0
+        ? (currentWater / waterGoal).clamp(0.0, 1.0).toDouble()
+        : 0.0;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Theo dõi nước'),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
@@ -57,8 +87,12 @@ class _WaterScreenState extends State<WaterScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    'Mục tiêu mẫu: $waterGoal ml',
+                  Text('Mục tiêu: $waterGoal ml'),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _editGoal,
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Chỉnh mục tiêu'),
                   ),
                 ],
               ),
@@ -89,35 +123,24 @@ class _WaterScreenState extends State<WaterScreen> {
               children: [
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {
-                      addWater(250);
-                    },
+                    onPressed: () => _addWater(250),
                     child: const Text('+250 ml'),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {
-                      addWater(500);
-                    },
+                    onPressed: () => _addWater(500),
                     child: const Text('+500 ml'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const WaterHistoryScreen(),
-                    ),
-                  );
-                },
+                onPressed: _openHistory,
                 child: const Padding(
                   padding: EdgeInsets.symmetric(vertical: 14),
                   child: Text('Xem lịch sử nước'),
@@ -127,6 +150,74 @@ class _WaterScreenState extends State<WaterScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _WaterGoalDialog extends StatefulWidget {
+  const _WaterGoalDialog();
+
+  @override
+  State<_WaterGoalDialog> createState() => _WaterGoalDialogState();
+}
+
+class _WaterGoalDialogState extends State<_WaterGoalDialog> {
+  final TextEditingController _controller = TextEditingController(
+    text: NutritionStore.instance.waterGoalMl.toString(),
+  );
+
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Chỉnh mục tiêu nước'),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Mục tiêu nước (ml)',
+            border: OutlineInputBorder(),
+          ),
+          validator: (value) {
+            final goal = int.tryParse(value?.trim() ?? '');
+
+            if (goal == null || goal <= 0) {
+              return 'Nhập số nguyên dương.';
+            }
+
+            return null;
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+          },
+          child: const Text('Hủy'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (_formKey.currentState!.validate()) {
+              Navigator.pop(
+                context,
+                int.parse(_controller.text.trim()),
+              );
+            }
+          },
+          child: const Text('Lưu mục tiêu'),
+        ),
+      ],
     );
   }
 }
