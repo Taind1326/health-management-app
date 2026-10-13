@@ -75,8 +75,12 @@ class _SleepScreenState extends State<SleepScreen> {
         ),
       ),
     );
-    if (saved == true) setState(() => _goalMinutes = (hours * 60).round());
+    if (!mounted || saved != true) return;
+    setState(() => _goalMinutes = (hours * 60).round());
   }
+
+  String _dmy(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   Future<void> _addRecord() async {
     final result = await showModalBottomSheet<SleepRecord>(
@@ -84,9 +88,36 @@ class _SleepScreenState extends State<SleepScreen> {
       isScrollControlled: true,
       builder: (_) => const _AddSleepSheet(),
     );
-    if (result == null) return;
+    if (!mounted || result == null) return;
+
+    // Mỗi ngày thức dậy chỉ giữ một bản ghi: nếu đã có thì hỏi trước khi thay.
+    final hasOld = _records.any((r) => r.isOn(result.wakeTime));
+    if (hasOld) {
+      final replace = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Thay thế bản ghi cũ?'),
+          content: Text(
+            'Ngày ${_dmy(result.wakeTime)} đã có dữ liệu giấc ngủ. '
+            'Bạn có muốn thay bằng bản ghi mới không?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Thay thế'),
+            ),
+          ],
+        ),
+      );
+      // Chọn Hủy (hoặc đóng dialog): giữ nguyên bản ghi cũ.
+      if (!mounted || replace != true) return;
+    }
+
     setState(() {
-      // Mỗi ngày thức dậy chỉ giữ một bản ghi: ghi mới sẽ thay bản cũ.
       _records.removeWhere((r) => r.isOn(result.wakeTime));
       _records.add(result);
     });
@@ -225,8 +256,9 @@ class _TimeTile extends StatelessWidget {
   }
 }
 
-/// Bottom sheet chọn giờ đi ngủ / giờ thức dậy. Giờ thức tính cho hôm nay;
-/// nếu giờ ngủ không sớm hơn giờ thức thì hiểu là đi ngủ từ hôm trước.
+/// Bottom sheet nhập giấc ngủ: ngày thức dậy, giờ đi ngủ, giờ thức dậy.
+/// Nếu giờ ngủ không sớm hơn giờ thức thì hiểu là đi ngủ từ hôm trước của
+/// ngày thức dậy. Không cho lưu giấc ngủ chưa kết thúc (giờ thức ở tương lai).
 class _AddSleepSheet extends StatefulWidget {
   const _AddSleepSheet();
 
@@ -235,19 +267,43 @@ class _AddSleepSheet extends StatefulWidget {
 }
 
 class _AddSleepSheetState extends State<_AddSleepSheet> {
+  late DateTime _wakeDate = _today();
   TimeOfDay _sleep = const TimeOfDay(hour: 23, minute: 0);
   TimeOfDay _wake = const TimeOfDay(hour: 6, minute: 30);
   String? _error;
 
+  static DateTime _today() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
   String _fmt(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
-  Future<void> _pick(bool isSleep) async {
+  String _dmy(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  Future<void> _pickDate() async {
+    final today = _today();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _wakeDate,
+      firstDate: DateTime(today.year - 1, today.month, today.day),
+      lastDate: today,
+    );
+    if (!mounted || picked == null) return;
+    setState(() {
+      _wakeDate = DateTime(picked.year, picked.month, picked.day);
+      _error = null;
+    });
+  }
+
+  Future<void> _pickTime(bool isSleep) async {
     final picked = await showTimePicker(
       context: context,
       initialTime: isSleep ? _sleep : _wake,
     );
-    if (picked == null) return;
+    if (!mounted || picked == null) return;
     setState(() {
       if (isSleep) {
         _sleep = picked;
@@ -259,11 +315,18 @@ class _AddSleepSheetState extends State<_AddSleepSheet> {
   }
 
   void _save() {
-    final now = DateTime.now();
-    final wake =
-        DateTime(now.year, now.month, now.day, _wake.hour, _wake.minute);
-    var sleep =
-        DateTime(now.year, now.month, now.day, _sleep.hour, _sleep.minute);
+    final wake = DateTime(_wakeDate.year, _wakeDate.month, _wakeDate.day,
+        _wake.hour, _wake.minute);
+
+    if (wake.isAfter(DateTime.now())) {
+      setState(() => _error =
+          'Giờ thức dậy ${_fmt(_wake)} ngày ${_dmy(_wakeDate)} chưa tới. '
+          'Chỉ ghi nhận được giấc ngủ đã kết thúc.');
+      return;
+    }
+
+    var sleep = DateTime(_wakeDate.year, _wakeDate.month, _wakeDate.day,
+        _sleep.hour, _sleep.minute);
     if (!sleep.isBefore(wake)) sleep = sleep.subtract(const Duration(days: 1));
 
     final minutes = wake.difference(sleep).inMinutes;
@@ -283,7 +346,7 @@ class _AddSleepSheetState extends State<_AddSleepSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         16,
         16,
@@ -297,11 +360,20 @@ class _AddSleepSheetState extends State<_AddSleepSheet> {
           Text('Ghi nhận giấc ngủ',
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _pickDate,
+              icon: const Icon(Icons.calendar_today),
+              label: Text('Ngày thức dậy ${_dmy(_wakeDate)}'),
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _pick(true),
+                  onPressed: () => _pickTime(true),
                   icon: const Icon(Icons.bedtime_outlined),
                   label: Text('Đi ngủ ${_fmt(_sleep)}'),
                 ),
@@ -309,7 +381,7 @@ class _AddSleepSheetState extends State<_AddSleepSheet> {
               const SizedBox(width: 12),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _pick(false),
+                  onPressed: () => _pickTime(false),
                   icon: const Icon(Icons.wb_sunny_outlined),
                   label: Text('Thức dậy ${_fmt(_wake)}'),
                 ),
