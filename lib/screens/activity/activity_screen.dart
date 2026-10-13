@@ -33,7 +33,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
       context,
       MaterialPageRoute(builder: (_) => const AddActivityScreen()),
     );
-    if (result != null) setState(() => _activities.add(result));
+    if (!mounted || result == null) return;
+    setState(() => _activities.add(result));
   }
 
   void _openHistory() {
@@ -49,66 +50,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Future<void> _editGoals() async {
-    final stepCtrl = TextEditingController(text: '$_stepGoal');
-    final minCtrl = TextEditingController(text: '$_minuteGoal');
-    final formKey = GlobalKey<FormState>();
-
-    String? validate(String? v, int min, int max) {
-      final n = int.tryParse(v?.trim() ?? '');
-      if (n == null) return 'Nhập một số nguyên';
-      if (n < min || n > max) return 'Nhập từ $min đến $max';
-      return null;
-    }
-
-    final saved = await showDialog<bool>(
+    final result = await showDialog<({int steps, int minutes})>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Mục tiêu vận động'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: stepCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Số bước mỗi ngày'),
-                validator: (v) => validate(v, 1000, 50000),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: minCtrl,
-                keyboardType: TextInputType.number,
-                decoration:
-                    const InputDecoration(labelText: 'Phút vận động mỗi ngày'),
-                validator: (v) => validate(v, 5, 600),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-            },
-            child: const Text('Lưu mục tiêu'),
-          ),
-        ],
-      ),
+      builder: (_) => _GoalDialog(stepGoal: _stepGoal, minuteGoal: _minuteGoal),
     );
-
-    if (saved == true) {
-      setState(() {
-        _stepGoal = int.parse(stepCtrl.text.trim());
-        _minuteGoal = int.parse(minCtrl.text.trim());
-      });
-    }
-    stepCtrl.dispose();
-    minCtrl.dispose();
+    if (!mounted || result == null) return;
+    setState(() {
+      _stepGoal = result.steps;
+      _minuteGoal = result.minutes;
+    });
   }
 
   IconData _iconFor(String type) {
@@ -282,6 +232,84 @@ class _StatTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Dialog đặt mục tiêu. Controller thuộc về dialog và được giải phóng trong
+/// dispose(), nên an toàn dù dialog hay màn hình cha bị đóng lúc nào.
+class _GoalDialog extends StatefulWidget {
+  final int stepGoal;
+  final int minuteGoal;
+
+  const _GoalDialog({required this.stepGoal, required this.minuteGoal});
+
+  @override
+  State<_GoalDialog> createState() => _GoalDialogState();
+}
+
+class _GoalDialogState extends State<_GoalDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _stepCtrl =
+      TextEditingController(text: '${widget.stepGoal}');
+  late final TextEditingController _minCtrl =
+      TextEditingController(text: '${widget.minuteGoal}');
+
+  @override
+  void dispose() {
+    _stepCtrl.dispose();
+    _minCtrl.dispose();
+    super.dispose();
+  }
+
+  String? _validate(String? v, int min, int max) {
+    final n = int.tryParse(v?.trim() ?? '');
+    if (n == null) return 'Nhập một số nguyên';
+    if (n < min || n > max) return 'Nhập từ $min đến $max';
+    return null;
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(context, (
+      steps: int.parse(_stepCtrl.text.trim()),
+      minutes: int.parse(_minCtrl.text.trim()),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Mục tiêu vận động'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _stepCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Số bước mỗi ngày'),
+              validator: (v) => _validate(v, 1000, 50000),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _minCtrl,
+              keyboardType: TextInputType.number,
+              decoration:
+                  const InputDecoration(labelText: 'Phút vận động mỗi ngày'),
+              validator: (v) => _validate(v, 5, 600),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Lưu mục tiêu')),
+      ],
     );
   }
 }

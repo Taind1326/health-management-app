@@ -2,6 +2,47 @@ import 'package:flutter/material.dart';
 
 import '../../models/activity.dart';
 
+/// Chuyển chuỗi nhập thành số km. Chấp nhận dấu phẩy thập phân ("2,5").
+/// Lưu ý: double.tryParse chấp nhận cả "NaN" và "Infinity".
+double? parseDistance(String? v) =>
+    double.tryParse((v ?? '').trim().replaceAll(',', '.'));
+
+/// Kiểm tra quãng đường (km). Trả về null nếu hợp lệ, ngược lại là thông báo lỗi.
+/// Phải kiểm tra isFinite trước khi so sánh khoảng, vì mọi phép so sánh với NaN
+/// đều trả về false nên NaN sẽ lọt qua điều kiện `d < 0 || d > 500`.
+String? validateDistance(String? v) {
+  final d = parseDistance(v);
+  if (d == null || !d.isFinite) return 'Nhập một số hợp lệ, ví dụ 2.5';
+  if (d < 0 || d > 500) return 'Nhập từ 0 đến 500';
+  return null;
+}
+
+/// Tự kiểm tra [validateDistance] với các giá trị cần thử: NaN, Infinity, số âm,
+/// số vượt 500 và số hợp lệ như 2,5. Chỉ chạy ở chế độ debug (gọi trong
+/// initState qua assert); nếu validator bị sửa sai sẽ báo lỗi ngay khi mở màn hình.
+bool _selfCheckDistanceValidator() {
+  const rejected = [
+    'NaN',
+    'Infinity',
+    '-Infinity',
+    '-1',
+    '500.1',
+    '501',
+    '',
+    'abc',
+  ];
+  const accepted = ['2,5', '2.5', '0', '500'];
+
+  for (final v in rejected) {
+    assert(validateDistance(v) != null, 'validateDistance phải từ chối "$v"');
+  }
+  assert(validateDistance(null) != null, 'validateDistance phải từ chối null');
+  for (final v in accepted) {
+    assert(validateDistance(v) == null, 'validateDistance phải chấp nhận "$v"');
+  }
+  return true;
+}
+
 /// Form ghi nhận một hoạt động. Trả về [Activity] qua Navigator.pop khi lưu.
 class AddActivityScreen extends StatefulWidget {
   const AddActivityScreen({super.key});
@@ -19,6 +60,12 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
 
   String _type = Activity.types.first;
   DateTime _date = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    assert(_selfCheckDistanceValidator());
+  }
 
   @override
   void dispose() {
@@ -40,12 +87,11 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
       firstDate: DateTime(now.year - 1),
       lastDate: now,
     );
-    if (picked != null) {
-      setState(() {
-        _date = DateTime(picked.year, picked.month, picked.day, _date.hour,
-            _date.minute);
-      });
-    }
+    if (!mounted || picked == null) return;
+    setState(() {
+      _date = DateTime(
+          picked.year, picked.month, picked.day, _date.hour, _date.minute);
+    });
   }
 
   Future<void> _pickTime() async {
@@ -53,12 +99,11 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
       context: context,
       initialTime: TimeOfDay.fromDateTime(_date),
     );
-    if (picked != null) {
-      setState(() {
-        _date = DateTime(
-            _date.year, _date.month, _date.day, picked.hour, picked.minute);
-      });
-    }
+    if (!mounted || picked == null) return;
+    setState(() {
+      _date = DateTime(
+          _date.year, _date.month, _date.day, picked.hour, picked.minute);
+    });
   }
 
   String? _intValidator(String? v, {required int min, required int max}) {
@@ -67,9 +112,6 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     if (n < min || n > max) return 'Nhập từ $min đến $max';
     return null;
   }
-
-  double? _parseDouble(String? v) =>
-      double.tryParse((v ?? '').trim().replaceAll(',', '.'));
 
   void _save() {
     if (!_formKey.currentState!.validate()) return;
@@ -86,7 +128,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
         type: _type,
         date: _date,
         steps: int.parse(_stepsCtrl.text.trim()),
-        distanceKm: _parseDouble(_distanceCtrl.text)!,
+        distanceKm: parseDistance(_distanceCtrl.text)!,
         durationMinutes: int.parse(_durationCtrl.text.trim()),
         calories: int.parse(_caloriesCtrl.text.trim()),
       ),
@@ -153,12 +195,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'Quãng đường (km)'),
-              validator: (v) {
-                final d = _parseDouble(v);
-                if (d == null) return 'Nhập một số, ví dụ 2.5';
-                if (d < 0 || d > 500) return 'Nhập từ 0 đến 500';
-                return null;
-              },
+              validator: validateDistance,
             ),
             const SizedBox(height: 12),
             TextFormField(
