@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../models/health_metric.dart';
+import '../../repositories/health_metric_repository.dart';
 
+/// Screen displaying details of a specific [HealthMetric] record.
+/// Allows real deletion by ID via [HealthMetricRepository].
 class MetricDetailScreen extends StatelessWidget {
   final HealthMetric metric;
 
@@ -14,31 +17,53 @@ class MetricDetailScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit),
+            tooltip: 'Chỉnh sửa',
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Chức năng sửa sẽ được hoàn thiện ở Đợt 2')),
+                const SnackBar(
+                  content: Text('Chức năng chỉnh sửa sẽ được hoàn thiện ở Đợt 2'),
+                ),
               );
             },
           ),
           IconButton(
             icon: const Icon(Icons.delete),
+            tooltip: 'Xóa',
             onPressed: () {
               showDialog(
                 context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Xác nhận'),
-                  content: const Text('Bạn có chắc muốn xóa chỉ số này?'),
+                builder: (dialogContext) => AlertDialog(
+                  title: const Text('Xác nhận xóa'),
+                  content: Text(
+                    'Bạn có chắc muốn xóa bản ghi ${metric.metricTypeLabel} (${metric.displayValue}) này không?',
+                  ),
                   actions: [
                     TextButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () => Navigator.pop(dialogContext),
                       child: const Text('Hủy'),
                     ),
                     TextButton(
                       onPressed: () {
-                        Navigator.pop(context); // Close dialog
-                        Navigator.pop(context); // Go back
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Đã xóa')),
+                        // Lấy ScaffoldMessenger từ context đang hoạt động trước khi pop
+                        final messenger = ScaffoldMessenger.of(context);
+
+                        // Xóa đúng ID khỏi nguồn dữ liệu chung
+                        if (metric.id != null) {
+                          HealthMetricRepository().delete(metric.id!);
+                        }
+
+                        // Đóng dialog xác nhận
+                        Navigator.pop(dialogContext);
+
+                        // Đóng màn hình chi tiết và trả về true để màn hình trước biết
+                        Navigator.pop(context, true);
+
+                        // Hiển thị thông báo qua messenger an toàn
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('Đã xóa bản ghi chỉ số thành công!'),
+                            backgroundColor: Colors.redAccent,
+                          ),
                         );
                       },
                       child: const Text('Xóa', style: TextStyle(color: Colors.red)),
@@ -65,22 +90,22 @@ class MetricDetailScreen extends StatelessWidget {
                     Icon(
                       _getIconForType(metric.metricType),
                       size: 48,
-                      color: Colors.green,
+                      color: Colors.green.shade700,
                     ),
                     const SizedBox(height: 16),
                     Text(
                       metric.metricTypeLabel,
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.green.shade900,
-                      ),
+                            color: Colors.green.shade900,
+                          ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       metric.displayValue,
                       style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green.shade900,
-                      ),
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade900,
+                          ),
                     ),
                   ],
                 ),
@@ -108,7 +133,9 @@ class MetricDetailScreen extends StatelessWidget {
                     _buildDetailRow(
                       context,
                       'Ghi chú',
-                      metric.note?.isNotEmpty == true ? metric.note! : 'Không có ghi chú',
+                      metric.note?.isNotEmpty == true
+                          ? metric.note!
+                          : 'Không có ghi chú',
                       Icons.note_alt_outlined,
                     ),
                   ],
@@ -121,7 +148,12 @@ class MetricDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailRow(BuildContext context, String label, String value, IconData icon) {
+  Widget _buildDetailRow(
+    BuildContext context,
+    String label,
+    String value,
+    IconData icon,
+  ) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -134,8 +166,8 @@ class MetricDetailScreen extends StatelessWidget {
               Text(
                 label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey.shade600,
-                ),
+                      color: Colors.grey.shade600,
+                    ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -152,13 +184,13 @@ class MetricDetailScreen extends StatelessWidget {
   IconData _getIconForType(String type) {
     switch (type) {
       case 'blood_pressure':
-        return Icons.favorite;
+        return Icons.bloodtype;
       case 'heart_rate':
-        return Icons.monitor_heart;
+        return Icons.favorite;
       case 'weight':
         return Icons.monitor_weight;
       case 'bmi':
-        return Icons.accessibility_new;
+        return Icons.calculate;
       default:
         return Icons.health_and_safety;
     }

@@ -1,150 +1,140 @@
 import 'package:flutter/material.dart';
 import '../../models/health_metric.dart';
+import '../../repositories/health_metric_repository.dart';
 import 'add_metric_screen.dart';
 import 'metric_history_screen.dart';
 import 'metric_chart_screen.dart';
 
 /// Main overview screen for Health Metrics module.
-/// Shows the latest values for each metric type as cards,
-/// with navigation to Add, History, and Chart screens.
-class HealthMetricScreen extends StatefulWidget {
+/// Listens to [HealthMetricRepository] to display the latest values in real-time.
+class HealthMetricScreen extends StatelessWidget {
   const HealthMetricScreen({super.key});
 
   @override
-  State<HealthMetricScreen> createState() => _HealthMetricScreenState();
-}
-
-class _HealthMetricScreenState extends State<HealthMetricScreen> {
-  final List<HealthMetric> _metrics = HealthMetric.sampleData();
-
-  /// Get the most recent metric record for a given type.
-  HealthMetric? _getLatestMetric(String type) {
-    try {
-      final typeMetrics = _metrics.where((m) => m.metricType == type).toList();
-      if (typeMetrics.isEmpty) return null;
-      typeMetrics.sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
-      return typeMetrics.first;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final latestBp = _getLatestMetric('blood_pressure');
-    final latestHr = _getLatestMetric('heart_rate');
-    final latestWeight = _getLatestMetric('weight');
-    final latestBmi = _getLatestMetric('bmi');
+    return ListenableBuilder(
+      listenable: HealthMetricRepository(),
+      builder: (context, _) {
+        final repo = HealthMetricRepository();
+        final latestBp = repo.getLatest('blood_pressure');
+        final latestHr = repo.getLatest('heart_rate');
+        final latestWeight = repo.getLatest('weight');
+        final latestBmi = repo.getLatest('bmi');
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chỉ số sức khỏe'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Chỉ số gần nhất',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 16),
-            // Row 1: Blood Pressure + Heart Rate
-            Row(
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Chỉ số sức khỏe'),
+            centerTitle: true,
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: _buildMetricCard(
-                    context,
-                    metric: latestBp,
-                    icon: Icons.bloodtype,
-                    color: Colors.red,
-                    defaultLabel: 'Huyết áp',
+                Text(
+                  'Chỉ số gần nhất',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                // Row 1: Blood Pressure + Heart Rate
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildMetricCard(
+                        context,
+                        metric: latestBp,
+                        icon: Icons.bloodtype,
+                        color: Colors.red,
+                        defaultLabel: 'Huyết áp',
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildMetricCard(
+                        context,
+                        metric: latestHr,
+                        icon: Icons.favorite,
+                        color: Colors.pink,
+                        defaultLabel: 'Nhịp tim',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Row 2: Weight + BMI
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildMetricCard(
+                        context,
+                        metric: latestWeight,
+                        icon: Icons.monitor_weight,
+                        color: Colors.blue,
+                        defaultLabel: 'Cân nặng',
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildMetricCard(
+                        context,
+                        metric: latestBmi,
+                        icon: Icons.calculate,
+                        color: Colors.green,
+                        defaultLabel: 'BMI',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 32),
+                // Action buttons
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const MetricHistoryScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.history),
+                  label: const Text('Xem lịch sử'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildMetricCard(
-                    context,
-                    metric: latestHr,
-                    icon: Icons.favorite,
-                    color: Colors.pink,
-                    defaultLabel: 'Nhịp tim',
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const MetricChartScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.bar_chart),
+                  label: const Text('Xem biểu đồ'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            // Row 2: Weight + BMI
-            Row(
-              children: [
-                Expanded(
-                  child: _buildMetricCard(
-                    context,
-                    metric: latestWeight,
-                    icon: Icons.monitor_weight,
-                    color: Colors.blue,
-                    defaultLabel: 'Cân nặng',
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildMetricCard(
-                    context,
-                    metric: latestBmi,
-                    icon: Icons.calculate,
-                    color: Colors.green,
-                    defaultLabel: 'BMI',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            // Action buttons
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const MetricHistoryScreen()),
-                );
-              },
-              icon: const Icon(Icons.history),
-              label: const Text('Xem lịch sử'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const MetricChartScreen()),
-                );
-              },
-              icon: const Icon(Icons.bar_chart),
-              label: const Text('Xem biểu đồ'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AddMetricScreen()),
-          );
-        },
-        child: const Icon(Icons.add),
-      ),
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AddMetricScreen()),
+              );
+            },
+            tooltip: 'Thêm chỉ số',
+            child: const Icon(Icons.add),
+          ),
+        );
+      },
     );
   }
 
