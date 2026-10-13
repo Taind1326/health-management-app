@@ -586,9 +586,21 @@ class HealthMetricChartPainter extends CustomPainter {
       );
     }
 
+    // Tính khoảng cách tọa độ X theo tỷ lệ thời gian thực tế giữa các điểm đo
+    final totalDurationMs = data.length > 1
+        ? data.last.recordedAt.difference(data.first.recordedAt).inMilliseconds
+        : 0;
+
     double getX(int index) {
-      if (data.length <= 1) return leftPadding + chartWidth / 2;
-      return leftPadding + (index / (data.length - 1)) * chartWidth;
+      if (data.length <= 1 || totalDurationMs == 0) {
+        return leftPadding + chartWidth / 2;
+      }
+      const pointMargin = 12.0;
+      final usableWidth = chartWidth - (pointMargin * 2);
+      final pointDiffMs =
+          data[index].recordedAt.difference(data.first.recordedAt).inMilliseconds;
+      final ratio = pointDiffMs / totalDurationMs;
+      return leftPadding + pointMargin + (ratio * usableWidth);
     }
 
     double getY(double val) {
