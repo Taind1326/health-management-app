@@ -24,7 +24,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
   final List<Medication> _medications = [
     const Medication(
       id: 'medication-001',
-      userId: 'demo-user',
+      userId: 1,
       name: 'Thuốc mẫu A',
       dosage: '1',
       unit: 'viên',
@@ -32,7 +32,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
     ),
     const Medication(
       id: 'medication-002',
-      userId: 'demo-user',
+      userId: 1,
       name: 'Thuốc mẫu B',
       dosage: '5',
       unit: 'ml',
@@ -146,7 +146,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
       context,
       MaterialPageRoute<Medication>(
         builder: (context) =>
-            MedicationFormScreen(medication: medication, userId: 'demo-user'),
+            MedicationFormScreen(medication: medication, userId: 1),
       ),
     );
 

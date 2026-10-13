@@ -4,7 +4,7 @@ enum ReminderRepeat { once, daily, selectedWeekdays }
 
 class Reminder {
   final String id;
-  final String userId;
+  final int userId;
   final String title;
   final ReminderType type;
   final DateTime startDate;

@@ -4,7 +4,7 @@ import '../../models/medication.dart';
 
 class MedicationFormScreen extends StatefulWidget {
   final Medication? medication;
-  final String userId;
+  final int userId;
 
   const MedicationFormScreen({
     super.key,
@@ -19,10 +19,13 @@ class MedicationFormScreen extends StatefulWidget {
 class _MedicationFormScreenState extends State<MedicationFormScreen> {
   final _formKey = GlobalKey<FormState>();
 
+  static const List<String> _units = ['viên', 'ml', 'gói', 'giọt', 'nhát xịt'];
+
   late final TextEditingController _nameController;
   late final TextEditingController _dosageController;
-  late final TextEditingController _unitController;
   late final TextEditingController _noteController;
+
+  String? _selectedUnit;
 
   bool get _isEditing => widget.medication != null;
 
@@ -34,24 +37,20 @@ class _MedicationFormScreenState extends State<MedicationFormScreen> {
 
     _nameController = TextEditingController(text: medication?.name ?? '');
     _dosageController = TextEditingController(text: medication?.dosage ?? '');
-    _unitController = TextEditingController(text: medication?.unit ?? '');
     _noteController = TextEditingController(text: medication?.note ?? '');
+
+    final existingUnit = medication?.unit.trim();
+
+    // Đơn vị cũ không thuộc danh sách thì yêu cầu chọn lại.
+    _selectedUnit = _units.contains(existingUnit) ? existingUnit : null;
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _dosageController.dispose();
-    _unitController.dispose();
     _noteController.dispose();
     super.dispose();
-  }
-
-  String? _validateRequired(String? value, String label) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Vui lòng nhập $label.';
-    }
-    return null;
   }
 
   String? _validateMedicationName(String? value) {
@@ -61,9 +60,7 @@ class _MedicationFormScreenState extends State<MedicationFormScreen> {
       return 'Vui lòng nhập tên thuốc.';
     }
 
-    final hasLetter = RegExp(r'\p{L}', unicode: true).hasMatch(name);
-
-    if (!hasLetter) {
+    if (!RegExp(r'\p{L}', unicode: true).hasMatch(name)) {
       return 'Tên thuốc phải có ít nhất một chữ cái.';
     }
 
@@ -71,11 +68,13 @@ class _MedicationFormScreenState extends State<MedicationFormScreen> {
   }
 
   String? _validateDosage(String? value) {
-    if (value == null || value.trim().isEmpty) {
+    final text = value?.trim() ?? '';
+
+    if (text.isEmpty) {
       return 'Vui lòng nhập liều lượng.';
     }
 
-    final dosage = double.tryParse(value.trim().replaceAll(',', '.'));
+    final dosage = double.tryParse(text.replaceAll(',', '.'));
 
     if (dosage == null || !dosage.isFinite || dosage <= 0) {
       return 'Liều lượng phải là số lớn hơn 0.';
@@ -94,7 +93,7 @@ class _MedicationFormScreenState extends State<MedicationFormScreen> {
       userId: widget.medication?.userId ?? widget.userId,
       name: _nameController.text.trim().replaceAll(RegExp(r'\s+'), ' '),
       dosage: _dosageController.text.trim().replaceAll(',', '.'),
-      unit: _unitController.text.trim(),
+      unit: _selectedUnit!,
       note: _noteController.text.trim(),
     );
 
@@ -139,15 +138,29 @@ class _MedicationFormScreenState extends State<MedicationFormScreen> {
                 validator: _validateDosage,
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _unitController,
+              DropdownButtonFormField<String>(
+                initialValue: _selectedUnit,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Đơn vị',
-                  hintText: 'Ví dụ: viên, ml, gói',
                   border: OutlineInputBorder(),
                 ),
-                textInputAction: TextInputAction.next,
-                validator: (value) => _validateRequired(value, 'đơn vị'),
+                hint: const Text('Chọn đơn vị'),
+                items: _units.map((unit) {
+                  return DropdownMenuItem<String>(
+                    value: unit,
+                    child: Text(unit),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() => _selectedUnit = value);
+                },
+                validator: (value) {
+                  if (value == null || !_units.contains(value)) {
+                    return 'Vui lòng chọn đơn vị.';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
               TextFormField(

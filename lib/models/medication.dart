@@ -1,6 +1,6 @@
 class Medication {
   final String id;
-  final String userId;
+  final int userId;
   final String name;
   final String dosage;
   final String unit;
