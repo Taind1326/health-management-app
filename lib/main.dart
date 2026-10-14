@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
-import 'screens/health_metrics/health_metric_screen.dart';
+
+import 'screens/auth/login_screen.dart';
 
 void main() {
-  runApp(const HealthApp());
+  runApp(const MyApp());
 }
 
-/// Root widget for the Health Management App.
-/// Phase 1 prototype: launches directly into the Health Metrics module.
-class HealthApp extends StatelessWidget {
-  const HealthApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -17,8 +16,7 @@ class HealthApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.green,
-          brightness: Brightness.light,
+          seedColor: Colors.teal,
         ),
         useMaterial3: true,
         appBarTheme: const AppBarTheme(
@@ -26,7 +24,7 @@ class HealthApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      home: const HealthMetricScreen(),
+      home: const LoginScreen(),
     );
   }
 }
