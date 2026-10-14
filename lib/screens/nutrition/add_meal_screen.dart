@@ -34,10 +34,15 @@ class _AddMealScreenState extends State<AddMealScreen> {
   }
 
   double get _quantity {
-    return double.tryParse(
-          _quantityController.text.trim(),
-        ) ??
-        0;
+    final value = double.tryParse(
+      _quantityController.text.trim(),
+    );
+
+    if (value == null || !value.isFinite || value <= 0) {
+      return 0;
+    }
+
+    return value;
   }
 
   @override
