@@ -59,7 +59,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.green.shade50,
+                color: Theme.of(context).colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
@@ -220,13 +220,15 @@ class _NutritionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
       ),
       child: Column(
         children: [
-          Icon(icon, color: Colors.green),
+          Icon(icon, color: Theme.of(context).colorScheme.primary),
           const SizedBox(height: 6),
           Text(
             title,
