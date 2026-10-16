@@ -105,16 +105,16 @@ class AuthService {
     );
     _users.add(newUser);
 
-    // Hồ sơ sức khỏe ban đầu liên kết với User.id và lưu đúng họ tên đã đăng ký
+    // Hồ sơ sức khỏe ban đầu liên kết với User.id, chưa thiết lập các chỉ số sức khỏe
     _profiles[newId] = HealthProfile(
       id: newId,
       userId: newId,
       fullName: fullName,
-      age: 20,
+      age: 0,
       gender: 'Nam',
-      height: 170.0,
-      weight: 65.0,
-      bmi: 22.49,
+      height: 0.0,
+      weight: 0.0,
+      bmi: 0.0,
     );
 
     _goals[newId] = [];
@@ -132,11 +132,11 @@ class AuthService {
       id: userId,
       userId: userId,
       fullName: _currentUser?.username ?? 'Người dùng',
-      age: 20,
+      age: 0,
       gender: 'Nam',
-      height: 170.0,
-      weight: 65.0,
-      bmi: 22.49,
+      height: 0.0,
+      weight: 0.0,
+      bmi: 0.0,
     );
     _profiles[userId] = defaultProfile;
     return defaultProfile;

@@ -82,7 +82,7 @@ void main() {
   );
 
   testWidgets(
-    'LoginScreen validation test with empty inputs',
+    'Đăng nhập với dữ liệu trống hiển thị lỗi',
     (WidgetTester tester) async {
       await tester.pumpWidget(const MyApp());
 
@@ -149,10 +149,11 @@ void main() {
   );
 
   testWidgets(
-    'Đăng ký tài khoản mới rồi đăng nhập thành công',
+    'Đăng ký rồi đăng nhập và thiết lập hồ sơ trước khi vào Trang chủ',
     (WidgetTester tester) async {
       await tester.pumpWidget(const MyApp());
 
+      // Mở màn hình đăng ký.
       await tapVisible(
         tester,
         find.widgetWithText(TextButton, 'Đăng ký'),
@@ -160,6 +161,7 @@ void main() {
 
       expect(find.text('Tạo tài khoản mới'), findsOneWidget);
 
+      // Nhập thông tin tài khoản mới.
       await fillField(tester, 'Họ và tên', 'Trần Thị B');
       await fillField(tester, 'Số điện thoại', '0987654321');
       await fillField(tester, 'Tên tài khoản', 'newuser02');
@@ -175,6 +177,7 @@ void main() {
         find.widgetWithText(ElevatedButton, 'Đăng ký'),
       );
 
+      // Đăng ký thành công thì quay về đăng nhập.
       expect(
         find.text('Ứng dụng Quản lý Sức khỏe'),
         findsOneWidget,
@@ -187,6 +190,39 @@ void main() {
         tester,
         find.widgetWithText(ElevatedButton, 'Đăng nhập'),
       );
+
+      // Tài khoản mới cần thiết lập hồ sơ sức khỏe.
+      expect(
+        find.text('Thiết lập hồ sơ sức khỏe'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Nhập thông tin sức khỏe ban đầu'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(AppBar, 'Trang chủ'),
+        findsNothing,
+      );
+
+      await fillField(tester, 'Tuổi', '21');
+      await fillField(tester, 'Chiều cao (cm)', '165');
+      await fillField(tester, 'Cân nặng (kg)', '55');
+
+      // Đóng bàn phím và thông báo trước khi bấm hoàn tất.
+      FocusManager.instance.primaryFocus?.unfocus();
+
+      final completeButton = find.widgetWithText(
+        ElevatedButton,
+        'Hoàn tất & Vào trang chủ',
+      );
+
+      ScaffoldMessenger.of(
+        tester.element(completeButton),
+      ).hideCurrentSnackBar();
+
+      await tester.pumpAndSettle();
+      await tapVisible(tester, completeButton);
 
       expect(
         find.widgetWithText(AppBar, 'Trang chủ'),

@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../models/health_profile.dart';
+import '../../services/auth_service.dart';
+import '../home/home_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final HealthProfile currentProfile;
+  final bool isInitialSetup;
 
   const EditProfileScreen({
     super.key,
     required this.currentProfile,
+    this.isInitialSetup = false,
   });
 
   @override
@@ -28,13 +32,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void initState() {
     super.initState();
     String formatInitial(double val) {
+      if (val <= 0) return '';
       return val % 1 == 0
           ? val.toInt().toString()
           : val.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
     }
 
     _fullNameController = TextEditingController(text: widget.currentProfile.fullName);
-    _ageController = TextEditingController(text: widget.currentProfile.age.toString());
+    _ageController = TextEditingController(
+      text: widget.currentProfile.age > 0 ? widget.currentProfile.age.toString() : '',
+    );
     _heightController = TextEditingController(text: formatInitial(widget.currentProfile.height));
     _weightController = TextEditingController(text: formatInitial(widget.currentProfile.weight));
 
@@ -104,8 +111,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       bmi: roundedBmi,
     );
 
-    // Trả dữ liệu đã cập nhật về cho ProfileScreen
-    Navigator.pop(context, updatedProfile);
+    if (widget.isInitialSetup) {
+      // Cập nhật profile vào AuthService
+      AuthService().updateProfile(updatedProfile);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Thiết lập hồ sơ sức khỏe ban đầu thành công!'),
+          backgroundColor: Colors.teal,
+        ),
+      );
+      // Chuyển thẳng vào HomeScreen
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const HomeScreen(),
+        ),
+      );
+    } else {
+      // Trả dữ liệu đã cập nhật về cho ProfileScreen
+      Navigator.pop(context, updatedProfile);
+    }
   }
 
   void _handleCancel() {
@@ -117,8 +142,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chỉnh sửa hồ sơ'),
+        title: Text(widget.isInitialSetup ? 'Thiết lập hồ sơ sức khỏe' : 'Chỉnh sửa hồ sơ'),
         centerTitle: true,
+        automaticallyImplyLeading: !widget.isInitialSetup,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -128,20 +154,31 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(
-                  Icons.edit_note_outlined,
+                Icon(
+                  widget.isInitialSetup ? Icons.health_and_safety_outlined : Icons.edit_note_outlined,
                   size: 64,
                   color: Colors.teal,
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Cập nhật thông tin sức khỏe',
+                Text(
+                  widget.isInitialSetup ? 'Nhập thông tin sức khỏe ban đầu' : 'Cập nhật thông tin sức khỏe',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                if (widget.isInitialSetup) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Vui lòng nhập chiều cao, cân nặng và tuổi để ứng dụng tính toán chỉ số BMI cho bạn.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
 
                 // 1. Họ và tên
@@ -278,7 +315,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Nút Lưu
+                // Nút Lưu / Hoàn tất
                 SizedBox(
                   height: 48,
                   child: ElevatedButton(
@@ -287,29 +324,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       backgroundColor: Colors.teal,
                       foregroundColor: Colors.white,
                     ),
-                    child: const Text(
-                      'Lưu',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    child: Text(
+                      widget.isInitialSetup ? 'Hoàn tất & Vào trang chủ' : 'Lưu',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-
-                // Nút Hủy
-                SizedBox(
-                  height: 48,
-                  child: OutlinedButton(
-                    onPressed: _handleCancel,
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.grey),
-                      foregroundColor: Colors.grey.shade800,
-                    ),
-                    child: const Text(
-                      'Hủy',
-                      style: TextStyle(fontSize: 16),
+                if (!widget.isInitialSetup) ...[
+                  const SizedBox(height: 12),
+                  // Nút Hủy
+                  SizedBox(
+                    height: 48,
+                    child: OutlinedButton(
+                      onPressed: _handleCancel,
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.grey),
+                        foregroundColor: Colors.grey.shade800,
+                      ),
+                      child: const Text(
+                        'Hủy',
+                        style: TextStyle(fontSize: 16),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
