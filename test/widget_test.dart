@@ -2,131 +2,336 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:health_app/main.dart';
+import 'package:health_app/screens/health_metrics/health_metric_screen.dart';
+import 'package:health_app/screens/nutrition/nutrition_screen.dart';
+import 'package:health_app/screens/nutrition/nutrition_store.dart';
 import 'package:health_app/services/auth_service.dart';
 
 void main() {
   setUp(() {
     AuthService().resetForTesting();
+    NutritionStore.instance.resetForTesting();
   });
 
-  testWidgets('LoginScreen UI smoke test', (WidgetTester tester) async {
-    // Build app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  Future<void> tapVisible(
+    WidgetTester tester,
+    Finder finder,
+  ) async {
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+    await tester.tap(finder);
+    await tester.pumpAndSettle();
+  }
 
-    // Kiểm tra các thành phần giao diện chính trên màn hình Đăng nhập
-    expect(find.text('Đăng nhập'), findsWidgets);
-    expect(find.text('Tên tài khoản'), findsOneWidget);
-    expect(find.text('Mật khẩu'), findsOneWidget);
-    expect(find.widgetWithText(ElevatedButton, 'Đăng nhập'), findsOneWidget);
-    expect(find.text('Chưa có tài khoản?'), findsOneWidget);
-    expect(find.text('Đăng ký'), findsOneWidget);
-  });
+  Future<void> fillField(
+    WidgetTester tester,
+    String label,
+    String value,
+  ) async {
+    final field = find.widgetWithText(TextFormField, label);
 
-  testWidgets('LoginScreen validation test with empty inputs', (WidgetTester tester) async {
-    await tester.pumpWidget(const MyApp());
-
-    // Nhấn nút Đăng nhập khi để trống các trường
-    await tester.tap(find.widgetWithText(ElevatedButton, 'Đăng nhập'));
+    await tester.ensureVisible(field);
+    await tester.pumpAndSettle();
+    await tester.enterText(field, value);
     await tester.pump();
+  }
 
-    // Kiểm tra thông báo lỗi validation
-    expect(find.text('Tên tài khoản không được để trống.'), findsOneWidget);
-    expect(find.text('Mật khẩu không được để trống.'), findsOneWidget);
-  });
+  Future<void> openNutrition(WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: NutritionScreen(),
+      ),
+    );
+  }
 
-  testWidgets('Đăng nhập thất bại khi sai mật khẩu -> ở lại Đăng nhập và hiện lỗi', (WidgetTester tester) async {
-    await tester.pumpWidget(const MyApp());
+  testWidgets(
+    'Health Metric Screen displays correctly',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: HealthMetricScreen(),
+        ),
+      );
 
-    // Nhập tài khoản mẫu và mật khẩu sai
-    final usernameField = find.widgetWithText(TextFormField, 'Tên tài khoản');
-    final passwordField = find.widgetWithText(TextFormField, 'Mật khẩu');
+      expect(find.text('Chỉ số sức khỏe'), findsOneWidget);
+      expect(find.text('Huyết áp'), findsOneWidget);
+      expect(find.text('Nhịp tim'), findsOneWidget);
+      expect(find.text('Cân nặng'), findsOneWidget);
+      expect(find.text('BMI'), findsOneWidget);
+      expect(find.text('Xem lịch sử'), findsOneWidget);
+      expect(find.text('Xem biểu đồ'), findsOneWidget);
+      expect(find.byIcon(Icons.add), findsOneWidget);
+    },
+  );
 
-    await tester.enterText(usernameField, 'user01');
-    await tester.enterText(passwordField, 'wrongpass');
+  testWidgets(
+    'LoginScreen UI smoke test',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const MyApp());
 
-    // Bấm Đăng nhập
-    await tester.tap(find.widgetWithText(ElevatedButton, 'Đăng nhập'));
-    await tester.pumpAndSettle();
+      expect(find.text('Đăng nhập'), findsWidgets);
+      expect(find.text('Tên tài khoản'), findsOneWidget);
+      expect(find.text('Mật khẩu'), findsOneWidget);
+      expect(
+        find.widgetWithText(ElevatedButton, 'Đăng nhập'),
+        findsOneWidget,
+      );
+      expect(find.text('Chưa có tài khoản?'), findsOneWidget);
+      expect(find.text('Đăng ký'), findsOneWidget);
+    },
+  );
 
-    // Vẫn ở màn hình Đăng nhập và hiển thị thông báo lỗi
-    expect(find.text('Tên tài khoản hoặc mật khẩu không đúng.'), findsWidgets);
-    expect(find.text('Trang chủ'), findsNothing);
-  });
+  testWidgets(
+    'Đăng nhập với dữ liệu trống hiển thị lỗi',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const MyApp());
 
-  testWidgets('Đăng nhập thành công với tài khoản mẫu -> điều hướng vào Trang chủ', (WidgetTester tester) async {
-    await tester.pumpWidget(const MyApp());
+      await tapVisible(
+        tester,
+        find.widgetWithText(ElevatedButton, 'Đăng nhập'),
+      );
 
-    final usernameField = find.widgetWithText(TextFormField, 'Tên tài khoản');
-    final passwordField = find.widgetWithText(TextFormField, 'Mật khẩu');
+      expect(
+        find.text('Tên tài khoản không được để trống.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Mật khẩu không được để trống.'),
+        findsOneWidget,
+      );
+    },
+  );
 
-    await tester.enterText(usernameField, 'user01');
-    await tester.enterText(passwordField, '123456');
+  testWidgets(
+    'Đăng nhập sai mật khẩu thì ở lại màn hình Đăng nhập',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const MyApp());
 
-    // Bấm Đăng nhập
-    await tester.tap(find.widgetWithText(ElevatedButton, 'Đăng nhập'));
-    await tester.pumpAndSettle();
+      await fillField(tester, 'Tên tài khoản', 'user01');
+      await fillField(tester, 'Mật khẩu', 'wrongpass');
 
-    // Đã vào Trang chủ
-    expect(find.text('Trang chủ'), findsOneWidget);
-    expect(find.text('Xin chào, user01!'), findsOneWidget);
-  });
+      await tapVisible(
+        tester,
+        find.widgetWithText(ElevatedButton, 'Đăng nhập'),
+      );
 
-  testWidgets('Luồng đăng ký tài khoản mới -> quay lại Đăng nhập -> thiết lập chỉ số sức khỏe -> vào Trang chủ', (WidgetTester tester) async {
-    await tester.pumpWidget(const MyApp());
+      expect(
+        find.text('Tên tài khoản hoặc mật khẩu không đúng.'),
+        findsWidgets,
+      );
+      expect(find.text('Trang chủ'), findsNothing);
+      expect(
+        find.widgetWithText(TextFormField, 'Tên tài khoản'),
+        findsOneWidget,
+      );
+    },
+  );
 
-    // 1. Từ LoginScreen bấm chuyển sang RegisterScreen
-    await tester.tap(find.text('Đăng ký'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'Đăng nhập tài khoản mẫu thành công',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const MyApp());
 
-    expect(find.text('Tạo tài khoản mới'), findsOneWidget);
+      await fillField(tester, 'Tên tài khoản', 'user01');
+      await fillField(tester, 'Mật khẩu', '123456');
 
-    // 2. Điền thông tin đăng ký mới
-    await tester.enterText(find.widgetWithText(TextFormField, 'Họ và tên'), 'Trần Thị B');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Số điện thoại'), '0987654321');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Tên tài khoản'), 'newuser02');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Mật khẩu'), 'password123');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Xác nhận mật khẩu'), 'password123');
+      await tapVisible(
+        tester,
+        find.widgetWithText(ElevatedButton, 'Đăng nhập'),
+      );
 
-    // 3. Bấm Đăng ký
-    await tester.tap(find.widgetWithText(ElevatedButton, 'Đăng ký'));
-    await tester.pumpAndSettle();
+      expect(
+        find.widgetWithText(AppBar, 'Trang chủ'),
+        findsOneWidget,
+      );
+      expect(find.text('Xin chào, user01!'), findsOneWidget);
+    },
+  );
 
-    // 4. Kiểm tra đã quay về màn hình Đăng nhập
-    expect(find.text('Ứng dụng Quản lý Sức khỏe'), findsOneWidget);
+  testWidgets(
+    'Đăng ký rồi đăng nhập và thiết lập hồ sơ trước khi vào Trang chủ',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const MyApp());
 
-    // 5. Đăng nhập bằng tài khoản vừa tạo
-    final usernameField = find.widgetWithText(TextFormField, 'Tên tài khoản');
-    final passwordField = find.widgetWithText(TextFormField, 'Mật khẩu');
+      // Mở màn hình đăng ký.
+      await tapVisible(
+        tester,
+        find.widgetWithText(TextButton, 'Đăng ký'),
+      );
 
-    await tester.enterText(usernameField, 'newuser02');
-    await tester.enterText(passwordField, 'password123');
+      expect(find.text('Tạo tài khoản mới'), findsOneWidget);
 
-    // 6. Bấm Đăng nhập
-    await tester.tap(find.widgetWithText(ElevatedButton, 'Đăng nhập'));
-    await tester.pumpAndSettle();
+      // Nhập thông tin tài khoản mới.
+      await fillField(tester, 'Họ và tên', 'Trần Thị B');
+      await fillField(tester, 'Số điện thoại', '0987654321');
+      await fillField(tester, 'Tên tài khoản', 'newuser02');
+      await fillField(tester, 'Mật khẩu', 'password123');
+      await fillField(
+        tester,
+        'Xác nhận mật khẩu',
+        'password123',
+      );
 
-    // 7. Người dùng mới chưa có chỉ số sức khỏe -> hệ thống hiển thị màn hình Thiết lập hồ sơ sức khỏe
-    expect(find.text('Thiết lập hồ sơ sức khỏe'), findsOneWidget);
-    expect(find.text('Nhập thông tin sức khỏe ban đầu'), findsOneWidget);
+      await tapVisible(
+        tester,
+        find.widgetWithText(ElevatedButton, 'Đăng ký'),
+      );
 
-    // 8. Nhập các chỉ số ban đầu
-    await tester.enterText(find.widgetWithText(TextFormField, 'Tuổi'), '21');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Chiều cao (cm)'), '165');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Cân nặng (kg)'), '55');
+      // Đăng ký thành công thì quay về đăng nhập.
+      expect(
+        find.text('Ứng dụng Quản lý Sức khỏe'),
+        findsOneWidget,
+      );
 
-    // Đóng SnackBar cũ (nếu có từ màn hình đăng ký)
-    ScaffoldMessenger.of(tester.element(find.byType(Scaffold).first)).hideCurrentSnackBar();
-    await tester.pumpAndSettle();
+      await fillField(tester, 'Tên tài khoản', 'newuser02');
+      await fillField(tester, 'Mật khẩu', 'password123');
 
-    // 9. Cuộn tới nút và bấm Hoàn tất & Vào trang chủ
-    final completeButton = find.widgetWithText(ElevatedButton, 'Hoàn tất & Vào trang chủ');
-    await tester.ensureVisible(completeButton);
-    await tester.pumpAndSettle();
-    await tester.tap(completeButton, warnIfMissed: false);
-    await tester.pumpAndSettle();
+      await tapVisible(
+        tester,
+        find.widgetWithText(ElevatedButton, 'Đăng nhập'),
+      );
 
-    // 10. Kiểm tra đã chuyển sang Trang chủ thành công
-    expect(find.text('Trang chủ'), findsOneWidget);
-    expect(find.text('Xin chào, newuser02!'), findsOneWidget);
-  });
+      // Tài khoản mới cần thiết lập hồ sơ sức khỏe.
+      expect(
+        find.text('Thiết lập hồ sơ sức khỏe'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Nhập thông tin sức khỏe ban đầu'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(AppBar, 'Trang chủ'),
+        findsNothing,
+      );
+
+      await fillField(tester, 'Tuổi', '21');
+      await fillField(tester, 'Chiều cao (cm)', '165');
+      await fillField(tester, 'Cân nặng (kg)', '55');
+
+      // Đóng bàn phím và thông báo trước khi bấm hoàn tất.
+      FocusManager.instance.primaryFocus?.unfocus();
+
+      final completeButton = find.widgetWithText(
+        ElevatedButton,
+        'Hoàn tất & Vào trang chủ',
+      );
+
+      ScaffoldMessenger.of(
+        tester.element(completeButton),
+      ).hideCurrentSnackBar();
+
+      await tester.pumpAndSettle();
+      await tapVisible(tester, completeButton);
+
+      expect(
+        find.widgetWithText(AppBar, 'Trang chủ'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Xin chào, newuser02!'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Tổng dinh dưỡng được tính từ các bữa ăn',
+    (WidgetTester tester) async {
+      await openNutrition(tester);
+
+      expect(find.text('1350 kcal'), findsOneWidget);
+      expect(find.text('75 g'), findsOneWidget);
+      expect(find.text('155 g'), findsOneWidget);
+      expect(find.text('40 g'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Thêm bữa ăn cập nhật tổng calo',
+    (WidgetTester tester) async {
+      await openNutrition(tester);
+
+      await tapVisible(
+        tester,
+        find.widgetWithText(OutlinedButton, 'Thêm bữa ăn'),
+      );
+
+      await tapVisible(
+        tester,
+        find.widgetWithText(ElevatedButton, 'Lưu bữa ăn'),
+      );
+
+      expect(find.text('1700 kcal'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Thêm nước tạo bản ghi và giữ tổng khi mở lịch sử',
+    (WidgetTester tester) async {
+      await openNutrition(tester);
+
+      await tapVisible(
+        tester,
+        find.widgetWithText(OutlinedButton, 'Theo dõi nước'),
+      );
+
+      expect(find.text('1000 ml'), findsOneWidget);
+
+      await tapVisible(
+        tester,
+        find.widgetWithText(ElevatedButton, '+500 ml'),
+      );
+
+      expect(find.text('1500 ml'), findsOneWidget);
+
+      await tapVisible(
+        tester,
+        find.widgetWithText(
+          OutlinedButton,
+          'Xem lịch sử nước',
+        ),
+      );
+
+      expect(find.text('500 ml'), findsNWidgets(2));
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(find.text('1500 ml'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Chỉnh mục tiêu nước cập nhật tiến độ',
+    (WidgetTester tester) async {
+      await openNutrition(tester);
+
+      await tapVisible(
+        tester,
+        find.widgetWithText(OutlinedButton, 'Theo dõi nước'),
+      );
+
+      await tapVisible(
+        tester,
+        find.widgetWithText(OutlinedButton, 'Chỉnh mục tiêu'),
+      );
+
+      await tester.enterText(
+        find.byType(TextFormField),
+        '2500',
+      );
+
+      await tapVisible(
+        tester,
+        find.widgetWithText(ElevatedButton, 'Lưu mục tiêu'),
+      );
+
+      expect(
+        find.text('Mục tiêu: 2500 ml'),
+        findsOneWidget,
+      );
+      expect(find.text('40% tiến độ'), findsOneWidget);
+    },
+  );
 }
