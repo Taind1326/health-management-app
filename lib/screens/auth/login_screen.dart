@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'register_screen.dart';
 import '../home/home_screen.dart';
+import '../profile/edit_profile_screen.dart';
 import '../../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -41,12 +42,28 @@ class _LoginScreenState extends State<LoginScreen> {
     final user = AuthService().login(username, password);
 
     if (user != null) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const HomeScreen(),
-        ),
-      );
+      final profile = AuthService().getProfile(user.id);
+      if (!profile.isCompleted) {
+        // Tài khoản mới chưa có chỉ số sức khỏe -> chuyển sang màn hình thiết lập ban đầu
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => EditProfileScreen(
+              currentProfile: profile,
+              isInitialSetup: true,
+            ),
+          ),
+        ).then((updatedProfile) {
+          // Lưu ý: sau khi hoàn tất trong EditProfileScreen, người dùng sẽ được chuyển vào HomeScreen
+        });
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const HomeScreen(),
+          ),
+        );
+      }
     } else {
       setState(() {
         _errorMessage = 'Tên tài khoản hoặc mật khẩu không đúng.';

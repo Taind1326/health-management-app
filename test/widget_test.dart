@@ -71,7 +71,7 @@ void main() {
     expect(find.text('Xin chào, user01!'), findsOneWidget);
   });
 
-  testWidgets('Luồng đăng ký tài khoản mới -> quay lại Đăng nhập -> đăng nhập vào Trang chủ', (WidgetTester tester) async {
+  testWidgets('Luồng đăng ký tài khoản mới -> quay lại Đăng nhập -> thiết lập chỉ số sức khỏe -> vào Trang chủ', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp());
 
     // 1. Từ LoginScreen bấm chuyển sang RegisterScreen
@@ -105,7 +105,27 @@ void main() {
     await tester.tap(find.widgetWithText(ElevatedButton, 'Đăng nhập'));
     await tester.pumpAndSettle();
 
-    // 7. Kiểm tra đã chuyển sang Trang chủ thành công
+    // 7. Người dùng mới chưa có chỉ số sức khỏe -> hệ thống hiển thị màn hình Thiết lập hồ sơ sức khỏe
+    expect(find.text('Thiết lập hồ sơ sức khỏe'), findsOneWidget);
+    expect(find.text('Nhập thông tin sức khỏe ban đầu'), findsOneWidget);
+
+    // 8. Nhập các chỉ số ban đầu
+    await tester.enterText(find.widgetWithText(TextFormField, 'Tuổi'), '21');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Chiều cao (cm)'), '165');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Cân nặng (kg)'), '55');
+
+    // Đóng SnackBar cũ (nếu có từ màn hình đăng ký)
+    ScaffoldMessenger.of(tester.element(find.byType(Scaffold).first)).hideCurrentSnackBar();
+    await tester.pumpAndSettle();
+
+    // 9. Cuộn tới nút và bấm Hoàn tất & Vào trang chủ
+    final completeButton = find.widgetWithText(ElevatedButton, 'Hoàn tất & Vào trang chủ');
+    await tester.ensureVisible(completeButton);
+    await tester.pumpAndSettle();
+    await tester.tap(completeButton, warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    // 10. Kiểm tra đã chuyển sang Trang chủ thành công
     expect(find.text('Trang chủ'), findsOneWidget);
     expect(find.text('Xin chào, newuser02!'), findsOneWidget);
   });
