@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../models/activity.dart';
 import 'activity_history_screen.dart';
-import 'activity_sample_data.dart';
 import 'add_activity_screen.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Màn hình tổng quan vận động trong ngày + mục tiêu.
 class ActivityScreen extends StatefulWidget {
@@ -15,7 +16,8 @@ class ActivityScreen extends StatefulWidget {
 
 class _ActivityScreenState extends State<ActivityScreen> {
   // Prototype đợt 1: dữ liệu giữ trong bộ nhớ.
-  final List<Activity> _activities = buildSampleActivities();
+  List<Activity> _activities = [];
+  bool _loadingActivities = true;
   int _stepGoal = 10000;
   int _minuteGoal = 30;
 
@@ -34,7 +36,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
       MaterialPageRoute(builder: (_) => const AddActivityScreen()),
     );
     if (!mounted || result == null) return;
-    setState(() => _activities.add(result));
+
+    setState(() {
+      _activities.add(result);
+    });
+
+    await _saveActivities();
   }
 
   void _openHistory() {
@@ -69,10 +76,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
         return Icons.directions_run;
       case 'Đạp xe':
         return Icons.directions_bike;
-      case 'Bơi lội':
-        return Icons.pool;
-      case 'Yoga':
-        return Icons.self_improvement;
       default:
         return Icons.fitness_center;
     }
@@ -103,7 +106,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
         icon: const Icon(Icons.add),
         label: const Text('Thêm hoạt động'),
       ),
-      body: ListView(
+      body: _loadingActivities
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
           Center(
@@ -201,6 +206,51 @@ class _ActivityScreenState extends State<ActivityScreen> {
         ],
       ),
     );
+  }
+  @override
+  void initState() {
+    super.initState();
+    _loadActivities();
+  }
+
+  Future<void> _loadActivities() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('activities');
+
+    List<Activity> loaded = [];
+
+    if (raw != null) {
+      try {
+        final list = jsonDecode(raw) as List<dynamic>;
+        loaded = list
+            .map(
+              (item) => Activity.fromMap(
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
+            .toList();
+      } catch (_) {
+        // Dữ liệu không hợp lệ: khởi tạo danh sách rỗng.
+        loaded = [];
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _activities = loaded;
+      _loadingActivities = false;
+    });
+  }
+
+  Future<void> _saveActivities() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final json = jsonEncode(
+      _activities.map((activity) => activity.toMap()).toList(),
+    );
+
+    await prefs.setString('activities', json);
   }
 }
 

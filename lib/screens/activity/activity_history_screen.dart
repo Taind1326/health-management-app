@@ -103,8 +103,15 @@ class ActivityHistoryScreen extends StatelessWidget {
                     child: ListTile(
                       title: Text('${a.type} - ${a.steps} bước'),
                       subtitle: Text(
-                        '${_hm(a.date)} - ${a.durationMinutes} phút - ${a.distanceKm.toStringAsFixed(1)} km - ${a.calories} kcal',
+                        [
+                          '${_hm(a.date)} - ${a.durationMinutes} phút '
+                              '- ${a.distanceKm.toStringAsFixed(2)} km '
+                              '- ${a.calories} kcal',
+                          if (a.origin != null && a.destination != null)
+                            '${a.origin} → ${a.destination}',
+                        ].join('\n'),
                       ),
+                      isThreeLine: a.origin != null && a.destination != null,
                     ),
                   ),
                 ),

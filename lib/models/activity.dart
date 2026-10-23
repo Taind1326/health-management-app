@@ -4,8 +4,6 @@ class Activity {
     'Đi bộ',
     'Chạy bộ',
     'Đạp xe',
-    'Bơi lội',
-    'Yoga',
     'Khác',
   ];
 
@@ -17,6 +15,8 @@ class Activity {
   final double distanceKm;
   final int durationMinutes;
   final int calories;
+  final String? origin;
+  final String? destination;
 
   const Activity({
     this.id,
@@ -27,6 +27,8 @@ class Activity {
     required this.distanceKm,
     required this.durationMinutes,
     required this.calories,
+    required this.origin,
+    required this.destination,
   });
 
   /// Hoạt động có diễn ra trong ngày [day] không.
@@ -42,6 +44,8 @@ class Activity {
         'distance_km': distanceKm,
         'duration_minutes': durationMinutes,
         'calories': calories,
+        'origin': origin,
+        'destination': destination,
       };
 
   factory Activity.fromMap(Map<String, dynamic> map) => Activity(
@@ -53,5 +57,7 @@ class Activity {
         distanceKm: (map['distance_km'] as num).toDouble(),
         durationMinutes: map['duration_minutes'] as int,
         calories: map['calories'] as int,
+        origin: map['origin'] as String?,
+        destination: map['destination'] as String?,
       );
 }
