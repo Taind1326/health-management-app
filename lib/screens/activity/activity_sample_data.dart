@@ -17,6 +17,8 @@ List<Activity> buildSampleActivities() {
         distanceKm: km,
         durationMinutes: min,
         calories: kcal,
+        origin: null,
+        destination: null,
       );
 
   return [
@@ -26,7 +28,6 @@ List<Activity> buildSampleActivities() {
     a(2, 6, 'Chạy bộ', 7600, 5.5, 45, 410),
     a(3, 18, 'Đạp xe', 1200, 12.0, 50, 380),
     a(3, 7, 'Đi bộ', 5400, 4.0, 40, 180),
-    a(4, 19, 'Yoga', 800, 0.0, 40, 130),
     a(5, 6, 'Đi bộ', 11200, 8.4, 90, 420),
     a(6, 17, 'Chạy bộ', 6800, 5.0, 38, 360),
   ];
