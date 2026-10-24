@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/meal.dart';
 import 'add_meal_screen.dart';
+import 'diet_plan_screen.dart';
+import 'food_image_analysis_screen.dart';
 import 'food_list_screen.dart';
 import 'nutrition_store.dart';
 import 'water_history_screen.dart';
@@ -31,9 +33,81 @@ class _NutritionScreenState extends State<NutritionScreen> {
     }
   }
 
+  String _unit(String nutrient) {
+    return nutrient == 'Calo' ? 'kcal' : 'g';
+  }
+
+  Widget _buildExceededWarning(
+    Map<String, double> exceeded,
+  ) {
+    final targets = store.dailyNutritionTargets;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        border: Border.all(
+          color: Colors.red.shade300,
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.red.shade700,
+                size: 28,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Đã vượt mục tiêu dinh dưỡng',
+                  style: TextStyle(
+                    color: Colors.red.shade800,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Lượng dinh dưỡng ghi nhận hôm nay đã vượt '
+            'mục tiêu tham khảo của chế độ đang chọn:',
+          ),
+          const SizedBox(height: 8),
+          ...exceeded.entries.map((entry) {
+            final target = targets[entry.key]!;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '• ${entry.key}: '
+                '${formatNutritionValue(entry.value)} '
+                '/ ${formatNutritionValue(target)} '
+                '${_unit(entry.key)}',
+                style: TextStyle(
+                  color: Colors.red.shade800,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final todayMeals = store.todayMeals;
+    final exceeded = store.exceededNutritionToday;
 
     return Scaffold(
       appBar: AppBar(
@@ -53,8 +127,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
               ),
             ),
             const SizedBox(height: 4),
-            const Text('Tổng hợp các bữa ăn trong ngày'),
+            const Text(
+              'Tổng hợp các bữa ăn trong ngày',
+            ),
             const SizedBox(height: 16),
+
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
@@ -72,11 +149,15 @@ class _NutritionScreenState extends State<NutritionScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text('Tổng năng lượng hôm nay'),
+                  const Text(
+                    'Tổng năng lượng hôm nay',
+                  ),
                 ],
               ),
             ),
+
             const SizedBox(height: 16),
+
             Row(
               children: [
                 Expanded(
@@ -107,7 +188,14 @@ class _NutritionScreenState extends State<NutritionScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+
+            if (exceeded.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              _buildExceededWarning(exceeded),
+            ],
+
+            const SizedBox(height: 8),
+
             const Text(
               'Các bữa ăn',
               style: TextStyle(
@@ -116,6 +204,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               ),
             ),
             const SizedBox(height: 10),
+
             if (todayMeals.isEmpty)
               const Card(
                 child: Padding(
@@ -127,7 +216,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
               )
             else
               ...todayMeals.map(_buildMealCard),
+
             const SizedBox(height: 24),
+
             const Text(
               'Chức năng',
               style: TextStyle(
@@ -136,6 +227,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               ),
             ),
             const SizedBox(height: 10),
+
             _ActionButton(
               icon: Icons.add_circle_outline,
               title: 'Thêm bữa ăn',
@@ -143,13 +235,31 @@ class _NutritionScreenState extends State<NutritionScreen> {
                 const AddMealScreen(),
               ),
             ),
+
+            _ActionButton(
+              icon: Icons.camera_alt_outlined,
+              title: 'Nhận diện món ăn bằng ảnh',
+              onTap: () => _openScreen(
+                const FoodImageAnalysisScreen(),
+              ),
+            ),
+
             _ActionButton(
               icon: Icons.restaurant_menu,
+              title: 'Chế độ dinh dưỡng',
+              onTap: () => _openScreen(
+                const DietPlanScreen(),
+              ),
+            ),
+
+            _ActionButton(
+              icon: Icons.restaurant,
               title: 'Danh sách món ăn',
               onTap: () => _openScreen(
                 const FoodListScreen(),
               ),
             ),
+
             _ActionButton(
               icon: Icons.water_drop,
               title: 'Theo dõi nước',
@@ -157,6 +267,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                 const WaterScreen(),
               ),
             ),
+
             _ActionButton(
               icon: Icons.history,
               title: 'Lịch sử nước',
@@ -178,6 +289,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
       if (food == null) {
         return 'Không tìm thấy món ăn';
+      }
+
+      if (food.portionGrams != null) {
+        return '${food.name} '
+            '(${formatNutritionValue(food.portionGrams!)} g)';
       }
 
       return '${food.name} × '
@@ -222,7 +338,9 @@ class _NutritionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(
+          color: Colors.grey.shade300,
+        ),
       ),
       child: Column(
         children: [
@@ -263,7 +381,9 @@ class _ActionButton extends StatelessWidget {
           onPressed: onTap,
           icon: Icon(icon),
           label: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            padding: const EdgeInsets.symmetric(
+              vertical: 14,
+            ),
             child: Text(title),
           ),
         ),
