@@ -162,7 +162,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _profile.bmi.toStringAsFixed(2),
+                        _profile.isCompleted ? _profile.bmi.toStringAsFixed(2) : '--',
                         style: const TextStyle(
                           fontSize: 40,
                           fontWeight: FontWeight.bold,
@@ -171,7 +171,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Chiều cao: ${_formatNumber(_profile.height)} cm  •  Cân nặng: ${_formatNumber(_profile.weight)} kg',
+                        _profile.isCompleted
+                            ? 'Chiều cao: ${_formatNumber(_profile.height)} cm  •  Cân nặng: ${_formatNumber(_profile.weight)} kg'
+                            : 'Chưa thiết lập chỉ số sức khỏe',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.teal.shade800,
@@ -213,7 +215,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       leading: const Icon(Icons.calendar_today_outlined, color: Colors.teal),
                       title: const Text('Tuổi'),
                       trailing: Text(
-                        '${_profile.age}',
+                        _profile.age > 0 ? '${_profile.age}' : 'Chưa cập nhật',
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                       ),
                     ),
@@ -231,7 +233,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       leading: const Icon(Icons.height, color: Colors.teal),
                       title: const Text('Chiều cao'),
                       trailing: Text(
-                        '${_formatNumber(_profile.height)} cm',
+                        _profile.height > 0 ? '${_formatNumber(_profile.height)} cm' : 'Chưa cập nhật',
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                       ),
                     ),
@@ -240,7 +242,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       leading: const Icon(Icons.scale_outlined, color: Colors.teal),
                       title: const Text('Cân nặng'),
                       trailing: Text(
-                        '${_formatNumber(_profile.weight)} kg',
+                        _profile.weight > 0 ? '${_formatNumber(_profile.weight)} kg' : 'Chưa cập nhật',
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                       ),
                     ),

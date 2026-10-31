@@ -18,4 +18,7 @@ class HealthProfile {
     required this.weight,
     required this.bmi,
   });
+
+  /// Kiểm tra xem hồ sơ đã được thiết lập chỉ số sức khỏe ban đầu hay chưa
+  bool get isCompleted => height > 0 && weight > 0 && bmi > 0;
 }

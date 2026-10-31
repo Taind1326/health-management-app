@@ -26,13 +26,13 @@ class FoodDetailScreen extends StatelessWidget {
               width: double.infinity,
               height: 180,
               decoration: BoxDecoration(
-                color: Colors.green.shade50,
+                color: Theme.of(context).colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.restaurant,
                 size: 80,
-                color: Colors.green,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
             const SizedBox(height: 20),

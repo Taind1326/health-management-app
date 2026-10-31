@@ -68,15 +68,15 @@ class _WaterScreenState extends State<WaterScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: Theme.of(context).colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Column(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.water_drop,
                     size: 60,
-                    color: Colors.blue,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                   const SizedBox(height: 12),
                   Text(
