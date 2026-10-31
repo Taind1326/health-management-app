@@ -7,6 +7,7 @@ class Food {
   final double protein;
   final double carb;
   final double fat;
+  final double? portionGrams;
 
   const Food({
     required this.id,
@@ -16,5 +17,6 @@ class Food {
     required this.protein,
     required this.carb,
     required this.fat,
+    this.portionGrams,
   });
 }
