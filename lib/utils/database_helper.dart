@@ -8,6 +8,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   factory DatabaseHelper() => _instance;
+  static DatabaseHelper get instance => _instance;
 
   static const databaseName = 'health_app.db';
   static const databaseVersion = 1;
@@ -91,9 +92,13 @@ class DatabaseHelper {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL COLLATE NOCASE UNIQUE
         CHECK(length(trim(username)) > 0 AND username = trim(username)),
-      phone TEXT NOT NULL CHECK(length(trim(phone)) > 0),
+      phone TEXT CHECK(phone IS NULL OR length(trim(phone)) >= 10),
+      email TEXT COLLATE NOCASE CHECK(email IS NULL OR length(trim(email)) > 0),
       password_hash TEXT NOT NULL CHECK(length(password_hash) > 0),
-      password_salt TEXT NOT NULL CHECK(length(password_salt) > 0)
+      password_salt TEXT NOT NULL CHECK(length(password_salt) > 0),
+      CHECK(phone IS NOT NULL OR email IS NOT NULL),
+      UNIQUE(phone),
+      UNIQUE(email)
     )''',
     '''CREATE TABLE health_profiles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

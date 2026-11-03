@@ -4,6 +4,7 @@ import 'routes/app_routes.dart';
 import 'screens/activity/activity_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
+import 'screens/intro/app_intro_screen.dart';
 import 'screens/health_metrics/health_metric_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/medication/medication_screen.dart';
@@ -29,6 +30,7 @@ class MyApp extends StatelessWidget {
       routes: {
         AppRoutes.login: (_) => const LoginScreen(),
         AppRoutes.register: (_) => const RegisterScreen(),
+        AppRoutes.intro: (_) => const AppIntroScreen(),
         AppRoutes.home: (_) => const HomeScreen(),
         AppRoutes.profile: (_) => const ProfileScreen(),
         AppRoutes.healthMetrics: (_) => const HealthMetricScreen(),
