@@ -57,12 +57,17 @@ class WalkingRoute {
 /// Tìm địa điểm (ORS Geocode/Pelias) và tính tuyến đi bộ (ORS Directions,
 /// profile foot-walking) bằng OpenRouteService của HeiGIT. Miễn phí.
 ///
-/// Token truyền khi chạy app, KHÔNG ghi cứng vào code:
+/// Token được ghi sẵn trong code ([_apiKey]) nên chạy app bình thường là dùng
+/// được. Vẫn có thể ghi đè khi chạy bằng:
 ///   flutter run --dart-define=ORS_API_KEY=xxxx
 ///
 /// Giữ tên class [GoogleMapsService] để không phải sửa chỗ import.
 class GoogleMapsService {
-  static const String _apiKey = String.fromEnvironment('ORS_API_KEY');
+  static const String _apiKey = String.fromEnvironment(
+    'ORS_API_KEY',
+    defaultValue:
+        'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjkyZTc4YzI4MzcyMTQyYmFhZDExZGNjZThiZDAwZjZlIiwiaCI6Im11cm11cjY0In0=',
+  );
 
   static const String _host = 'api.openrouteservice.org';
 
@@ -240,8 +245,7 @@ class GoogleMapsService {
   }) async {
     if (_apiKey.isEmpty) {
       throw const RouteException(
-        'Chưa cấu hình ORS_API_KEY '
-        '(chạy app với --dart-define=ORS_API_KEY=...).',
+        'Chưa cấu hình ORS_API_KEY trong google_maps_service.dart.',
       );
     }
     if (origin.trim().isEmpty || destination.trim().isEmpty) {
