@@ -28,7 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
+  Future<void> _handleLogin() async {
     setState(() {
       _errorMessage = null;
     });
@@ -40,8 +40,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final identifier = _usernameController.text.trim();
     final password = _passwordController.text;
 
-    // Đăng nhập qua AuthService (hỗ trợ Username, SĐT hoặc Email)
-    final user = AuthService().login(identifier, password);
+    // Đăng nhập qua AuthService (hỗ trợ Username, SĐT hoặc Email, đọc SQLite)
+    final user = await AuthService().login(identifier, password);
+    if (!mounted) return;
 
     if (user != null) {
       final profile = AuthService().getProfile(user.id);
@@ -242,8 +243,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 16),
 
                       // Dòng Chưa có tài khoản? Đăng ký
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           const Text(
                             'Chưa có tài khoản?',

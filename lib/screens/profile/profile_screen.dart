@@ -47,7 +47,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (updatedProfile != null && mounted) {
-      AuthService().updateProfile(updatedProfile);
+      await AuthService().updateProfile(updatedProfile);
+      if (!mounted) return;
       setState(() {
         _profile = updatedProfile;
       });
@@ -80,6 +81,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (context) => const LoginScreen(),
       ),
       (route) => false,
+    );
+  }
+
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF7DD3FC), size: 22),
+          const SizedBox(width: 14),
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -237,16 +273,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
-                      children: [
+                    Row(
+                      children: const [
                         Icon(Icons.auto_awesome, color: Color(0xFF7DD3FC), size: 20),
                         SizedBox(width: 8),
-                        Text(
-                          'Định hướng sức khỏe & Dinh dưỡng',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                        Expanded(
+                          child: Text(
+                            'Định hướng sức khỏe & Dinh dưỡng',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ],
@@ -342,72 +381,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // 4. Khối danh sách thông tin chi tiết
             Tv1GlassCard(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              padding: const EdgeInsets.symmetric(vertical: 6.0),
               child: Column(
                 children: [
-                  ListTile(
-                    leading: const Icon(Icons.badge_outlined, color: Color(0xFF7DD3FC)),
-                    title: const Text('Họ và tên', style: TextStyle(color: Colors.white70)),
-                    trailing: Text(
-                      _profile.fullName,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
-                    ),
+                  _buildInfoRow(
+                    icon: Icons.badge_outlined,
+                    label: 'Họ và tên',
+                    value: _profile.fullName,
                   ),
                   Divider(height: 1, color: Colors.white.withValues(alpha: 0.15)),
-                  ListTile(
-                    leading: const Icon(Icons.phone_outlined, color: Color(0xFF7DD3FC)),
-                    title: const Text('Số điện thoại', style: TextStyle(color: Colors.white70)),
-                    trailing: Text(
-                      userPhone,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
-                    ),
+                  _buildInfoRow(
+                    icon: Icons.phone_outlined,
+                    label: 'Số điện thoại',
+                    value: userPhone,
                   ),
                   if (userEmail != null && userEmail.isNotEmpty) ...[
                     Divider(height: 1, color: Colors.white.withValues(alpha: 0.15)),
-                    ListTile(
-                      leading: const Icon(Icons.email_outlined, color: Color(0xFF7DD3FC)),
-                      title: const Text('Email', style: TextStyle(color: Colors.white70)),
-                      trailing: Text(
-                        userEmail,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
-                      ),
+                    _buildInfoRow(
+                      icon: Icons.email_outlined,
+                      label: 'Email',
+                      value: userEmail,
                     ),
                   ],
                   Divider(height: 1, color: Colors.white.withValues(alpha: 0.15)),
-                  ListTile(
-                    leading: const Icon(Icons.calendar_today_outlined, color: Color(0xFF7DD3FC)),
-                    title: const Text('Tuổi', style: TextStyle(color: Colors.white70)),
-                    trailing: Text(
-                      _profile.age > 0 ? '${_profile.age}' : 'Chưa cập nhật',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
-                    ),
+                  _buildInfoRow(
+                    icon: Icons.calendar_today_outlined,
+                    label: 'Tuổi',
+                    value: _profile.age > 0 ? '${_profile.age}' : 'Chưa cập nhật',
                   ),
                   Divider(height: 1, color: Colors.white.withValues(alpha: 0.15)),
-                  ListTile(
-                    leading: const Icon(Icons.wc, color: Color(0xFF7DD3FC)),
-                    title: const Text('Giới tính', style: TextStyle(color: Colors.white70)),
-                    trailing: Text(
-                      _profile.gender,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
-                    ),
+                  _buildInfoRow(
+                    icon: Icons.wc,
+                    label: 'Giới tính',
+                    value: _profile.gender,
                   ),
                   Divider(height: 1, color: Colors.white.withValues(alpha: 0.15)),
-                  ListTile(
-                    leading: const Icon(Icons.height, color: Color(0xFF7DD3FC)),
-                    title: const Text('Chiều cao', style: TextStyle(color: Colors.white70)),
-                    trailing: Text(
-                      _profile.height > 0 ? '${_formatNumber(_profile.height)} cm' : 'Chưa cập nhật',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
-                    ),
+                  _buildInfoRow(
+                    icon: Icons.height,
+                    label: 'Chiều cao',
+                    value: _profile.height > 0 ? '${_formatNumber(_profile.height)} cm' : 'Chưa cập nhật',
                   ),
                   Divider(height: 1, color: Colors.white.withValues(alpha: 0.15)),
-                  ListTile(
-                    leading: const Icon(Icons.scale_outlined, color: Color(0xFF7DD3FC)),
-                    title: const Text('Cân nặng', style: TextStyle(color: Colors.white70)),
-                    trailing: Text(
-                      _profile.weight > 0 ? '${_formatNumber(_profile.weight)} kg' : 'Chưa cập nhật',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
-                    ),
+                  _buildInfoRow(
+                    icon: Icons.scale_outlined,
+                    label: 'Cân nặng',
+                    value: _profile.weight > 0 ? '${_formatNumber(_profile.weight)} kg' : 'Chưa cập nhật',
                   ),
                 ],
               ),

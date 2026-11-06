@@ -244,13 +244,13 @@ class AuthRepository {
     return HealthGoal(id: id, userId: userId, goal: goalText.trim());
   }
 
-  /// Xóa mục tiêu theo ID
-  Future<int> deleteGoal(int goalId) async {
+  /// Xóa mục tiêu theo cả id và user_id để đảm bảo tính an toàn và quyền sở hữu
+  Future<int> deleteGoal(int userId, int goalId) async {
     final db = await _db;
     return await db.delete(
       'health_goals',
-      where: 'id = ?',
-      whereArgs: [goalId],
+      where: 'id = ? AND user_id = ?',
+      whereArgs: [goalId, userId],
     );
   }
 
@@ -263,6 +263,14 @@ class AuthRepository {
       whereArgs: [userId, goalText.trim()],
     );
   }
+
+  /// Các chế độ ăn hợp lệ theo CHECK constraint của bảng user_settings
+  static const Set<String> validDietModes = {
+    'balanced',
+    'weight_loss',
+    'muscle_gain',
+    'vegetarian',
+  };
 
   /// Đồng bộ mục tiêu sang bảng user_settings của nhóm
   Future<void> syncUserSettings(
@@ -282,6 +290,11 @@ class AuthRepository {
       values['step_goal'] = stepGoal;
     }
     if (dietMode != null && dietMode.isNotEmpty) {
+      if (!validDietModes.contains(dietMode)) {
+        throw ArgumentError(
+          'Mã diet_mode "$dietMode" không hợp lệ. SQLite chỉ chấp nhận: ${validDietModes.join(", ")}',
+        );
+      }
       values['diet_mode'] = dietMode;
     }
 

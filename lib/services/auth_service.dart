@@ -112,27 +112,44 @@ class AuthService {
     _seenIntroUserIds.add(userId);
   }
 
-  // Đăng nhập tài khoản bằng Username, Email hoặc Số điện thoại
-  User? login(String identifier, String password) {
-    final cleanId = identifier.trim().toLowerCase();
+  // Đăng nhập tài khoản bằng Username, Email hoặc Số điện thoại (SQLite làm nguồn chính)
+  Future<User?> login(String identifier, String password) async {
+    final cleanId = identifier.trim();
+    if (cleanId.isEmpty || password.isEmpty) return null;
+
+    if (!_isTestingMode) {
+      final dbUser = await _repository.authenticate(cleanId, password);
+      if (dbUser != null) {
+        _currentUser = dbUser;
+        _users.removeWhere((u) => u.id == dbUser.id);
+        _users.add(dbUser);
+
+        // Nạp profile và goals từ SQLite vào RAM cache
+        final profile = await _repository.getProfile(dbUser.id);
+        _profiles[dbUser.id] = profile;
+
+        final goals = await _repository.getGoals(dbUser.id);
+        _goals[dbUser.id] = goals;
+
+        return dbUser;
+      }
+      return null;
+    }
+
+    // Môi trường kiểm thử (in-memory)
+    final cleanLower = cleanId.toLowerCase();
     for (final user in _users) {
-      final matchUsername = user.username.toLowerCase() == cleanId;
-      final matchPhone = user.phone?.toLowerCase() == cleanId;
-      final matchEmail = user.email?.toLowerCase() == cleanId;
+      final matchUsername = user.username.toLowerCase() == cleanLower;
+      final matchPhone = user.phone?.toLowerCase() == cleanLower;
+      final matchEmail = user.email?.toLowerCase() == cleanLower;
 
       if (matchUsername || matchPhone || matchEmail) {
-        bool passwordMatches = false;
         if (user.passwordSalt != null && user.passwordHash != null) {
           final hash = HashUtil.hashPassword(password, user.passwordSalt!);
-          passwordMatches = (hash == user.passwordHash);
-        }
-        if (!passwordMatches && user.password == password) {
-          passwordMatches = true;
-        }
-
-        if (passwordMatches) {
-          _currentUser = user;
-          return user;
+          if (hash == user.passwordHash) {
+            _currentUser = user;
+            return user;
+          }
         }
       }
     }
@@ -145,33 +162,73 @@ class AuthService {
   }
 
   // Kiểm tra tên tài khoản đã tồn tại chưa
-  bool isUsernameTaken(String username) {
-    final cleanUsername = username.trim().toLowerCase();
-    return _users.any((u) => u.username.toLowerCase() == cleanUsername);
+  Future<bool> isUsernameTaken(String username) async {
+    final cleanUsername = username.trim();
+    if (cleanUsername.isEmpty) return false;
+    if (!_isTestingMode) {
+      return await _repository.isUsernameTaken(cleanUsername);
+    }
+    return _users.any((u) => u.username.toLowerCase() == cleanUsername.toLowerCase());
   }
 
   // Kiểm tra số điện thoại đã tồn tại chưa
-  bool isPhoneTaken(String? phone) {
+  Future<bool> isPhoneTaken(String? phone) async {
     if (phone == null || phone.trim().isEmpty) return false;
     final cleanPhone = phone.trim();
+    if (!_isTestingMode) {
+      return await _repository.isPhoneTaken(cleanPhone);
+    }
     return _users.any((u) => u.phone == cleanPhone);
   }
 
   // Kiểm tra email đã tồn tại chưa
-  bool isEmailTaken(String? email) {
+  Future<bool> isEmailTaken(String? email) async {
     if (email == null || email.trim().isEmpty) return false;
-    final cleanEmail = email.trim().toLowerCase();
-    return _users.any((u) => (u.email ?? '').toLowerCase() == cleanEmail);
+    final cleanEmail = email.trim();
+    if (!_isTestingMode) {
+      return await _repository.isEmailTaken(cleanEmail);
+    }
+    return _users.any((u) => (u.email ?? '').toLowerCase() == cleanEmail.toLowerCase());
   }
 
-  // Đăng ký tài khoản mới kèm khởi tạo hồ sơ sức khỏe liên kết với userId
-  User register({
+  // Đăng ký tài khoản mới kèm khởi tạo hồ sơ sức khỏe và cài đặt trong 1 transaction SQLite
+  Future<User> register({
     required String fullName,
     String? phone,
     String? email,
     required String username,
     required String password,
-  }) {
+  }) async {
+    if (!_isTestingMode) {
+      // 1. Ghi vào SQLite trong transaction (tạo users + health_profiles + user_settings)
+      final newUser = await _repository.registerUser(
+        fullName: fullName,
+        phone: phone,
+        email: email,
+        username: username,
+        password: password,
+      );
+
+      // 2. Lấy chính xác newUserId tự tăng từ SQLite làm nguồn chân lý
+      final newUserId = newUser.id;
+      _users.add(newUser);
+
+      _profiles[newUserId] = HealthProfile(
+        id: newUserId,
+        userId: newUserId,
+        fullName: fullName.trim(),
+        age: 0,
+        gender: 'Nam',
+        height: 0.0,
+        weight: 0.0,
+        bmi: 0.0,
+      );
+      _goals[newUserId] = [];
+
+      return newUser;
+    }
+
+    // Môi trường kiểm thử (in-memory)
     final newId = _users.isEmpty ? 1 : _users.map((u) => u.id).reduce((a, b) => a > b ? a : b) + 1;
     final salt = HashUtil.generateSalt();
     final hash = HashUtil.hashPassword(password, salt);
@@ -181,13 +238,12 @@ class AuthService {
       username: username.trim(),
       phone: (phone != null && phone.trim().isNotEmpty) ? phone.trim() : null,
       email: (email != null && email.trim().isNotEmpty) ? email.trim() : null,
-      password: password,
+      password: '',
       passwordHash: hash,
       passwordSalt: salt,
     );
     _users.add(newUser);
 
-    // Hồ sơ sức khỏe ban đầu liên kết với User.id, chưa thiết lập các chỉ số sức khỏe
     _profiles[newId] = HealthProfile(
       id: newId,
       userId: newId,
@@ -198,19 +254,7 @@ class AuthService {
       weight: 0.0,
       bmi: 0.0,
     );
-
     _goals[newId] = [];
-
-    // Cố gắng đồng bộ ngầm vào SQLite nếu không ở chế độ kiểm thử
-    if (!_isTestingMode) {
-      _repository.registerUser(
-        fullName: fullName,
-        phone: phone,
-        email: email,
-        username: username,
-        password: password,
-      ).catchError((_) => newUser);
-    }
 
     return newUser;
   }
@@ -236,10 +280,10 @@ class AuthService {
   }
 
   // Cập nhật hồ sơ sức khỏe
-  void updateProfile(HealthProfile updatedProfile) {
+  Future<void> updateProfile(HealthProfile updatedProfile) async {
     _profiles[updatedProfile.userId] = updatedProfile;
     if (!_isTestingMode) {
-      _repository.updateProfile(updatedProfile).catchError((_) {});
+      await _repository.updateProfile(updatedProfile);
     }
   }
 
@@ -248,47 +292,61 @@ class AuthService {
     return _goals[userId] ?? [];
   }
 
-  // Thêm mục tiêu sức khỏe mới
-  HealthGoal addGoal(int userId, String goalText) {
+  // Thêm mục tiêu sức khỏe mới (lấy ID tự tăng từ SQLite)
+  Future<HealthGoal> addGoal(int userId, String goalText) async {
+    final cleanGoal = goalText.trim();
+    if (cleanGoal.isEmpty) {
+      throw ArgumentError('Mục tiêu sức khỏe không được để trống.');
+    }
     final list = _goals.putIfAbsent(userId, () => []);
-    final newId = DateTime.now().millisecondsSinceEpoch;
-    final newGoal = HealthGoal(id: newId, userId: userId, goal: goalText);
-    list.add(newGoal);
 
     if (!_isTestingMode) {
-      _repository.addGoal(userId, goalText).catchError((_) => newGoal);
+      final savedGoal = await _repository.addGoal(userId, cleanGoal);
+      list.add(savedGoal);
+      return savedGoal;
     }
 
+    final newId = list.isEmpty ? 1 : list.map((g) => g.id).reduce((a, b) => a > b ? a : b) + 1;
+    final newGoal = HealthGoal(id: newId, userId: userId, goal: cleanGoal);
+    list.add(newGoal);
     return newGoal;
   }
 
-  // Xóa mục tiêu sức khỏe theo userId và goalId
-  void deleteGoal(int userId, int goalId) {
+  // Xóa mục tiêu sức khỏe theo userId và goalId (đảm bảo quyền sở hữu)
+  Future<void> deleteGoal(int userId, int goalId) async {
     if (_goals.containsKey(userId)) {
       _goals[userId]!.removeWhere((g) => g.id == goalId);
     }
     if (!_isTestingMode) {
-      _repository.deleteGoal(goalId).catchError((_) => 0);
+      await _repository.deleteGoal(userId, goalId);
     }
   }
 
   // Xóa mục tiêu sức khỏe theo nội dung text
-  void deleteGoalByText(int userId, String goalText) {
+  Future<void> deleteGoalByText(int userId, String goalText) async {
+    final cleanGoal = goalText.trim();
     if (_goals.containsKey(userId)) {
-      _goals[userId]!.removeWhere((g) => g.goal == goalText.trim());
+      _goals[userId]!.removeWhere((g) => g.goal == cleanGoal);
     }
     if (!_isTestingMode) {
-      _repository.deleteGoalByText(userId, goalText).catchError((_) => 0);
+      await _repository.deleteGoalByText(userId, cleanGoal);
     }
   }
 
-  // --- CÔNG THỨC TÍNH TOÁN THÔNG MINH CHO MỤC TIÊU SỨC KHỎE ---
+  // --- CÔNG THỨC TÍNH TOÁN THÔNG MINH CHO MỤC TIÊU SỨC KHỎE (BẢO VỆ CHỐNG SỐ VÔ HẠN/NAN) ---
 
   /// Tính chỉ số BMI từ chiều cao (cm) và cân nặng (kg)
   static double calculateBmi(double heightCm, double weightKg) {
-    if (heightCm <= 0 || weightKg <= 0) return 0.0;
+    if (heightCm <= 0 || weightKg <= 0 ||
+        heightCm.isNaN || heightCm.isInfinite ||
+        weightKg.isNaN || weightKg.isInfinite) {
+      return 0.0;
+    }
     final heightMeter = heightCm / 100.0;
-    final bmi = weightKg / (heightMeter * heightMeter);
+    final denominator = heightMeter * heightMeter;
+    if (denominator <= 0 || denominator.isNaN || denominator.isInfinite) return 0.0;
+    final bmi = weightKg / denominator;
+    if (bmi.isNaN || bmi.isInfinite || bmi <= 0) return 0.0;
     return double.parse(bmi.toStringAsFixed(2));
   }
 
@@ -299,12 +357,18 @@ class AuthService {
     required int age,
     required String gender,
   }) {
-    if (weightKg <= 0 || heightCm <= 0 || age <= 0) return 0.0;
+    if (weightKg <= 0 || heightCm <= 0 || age <= 0 ||
+        weightKg.isNaN || weightKg.isInfinite ||
+        heightCm.isNaN || heightCm.isInfinite) {
+      return 0.0;
+    }
     // Nam: 10 * weight + 6.25 * height - 5 * age + 5
     // Nữ: 10 * weight + 6.25 * height - 5 * age - 161
     final isMale = gender.trim().toLowerCase() == 'nam' || gender.trim().toLowerCase() == 'male';
     final base = (10 * weightKg) + (6.25 * heightCm) - (5 * age);
-    return isMale ? base + 5 : base - 161;
+    final bmr = isMale ? base + 5 : base - 161;
+    if (bmr.isNaN || bmr.isInfinite || bmr <= 0) return 0.0;
+    return bmr;
   }
 
   /// Tính TDEE (Total Daily Energy Expenditure) ước lượng dựa trên mức hoạt động
@@ -312,6 +376,7 @@ class AuthService {
     required double bmr,
     String activityLevel = 'moderate',
   }) {
+    if (bmr <= 0 || bmr.isNaN || bmr.isInfinite) return 0;
     double factor = 1.375; // light activity default
     switch (activityLevel) {
       case 'sedentary':
@@ -327,14 +392,18 @@ class AuthService {
         factor = 1.725;
         break;
     }
-    return (bmr * factor).round();
+    final tdee = bmr * factor;
+    if (tdee.isNaN || tdee.isInfinite || tdee <= 0) return 0;
+    return tdee.round();
   }
 
   /// Tính lượng nước uống khuyến nghị mỗi ngày (ml) dựa trên cân nặng
   /// Chuẩn y khoa: ~35ml trên mỗi kg thể trọng
   static int calculateRecommendedWater(double weightKg) {
-    if (weightKg <= 0) return 2000;
-    final ml = (weightKg * 35).round();
+    if (weightKg <= 0 || weightKg.isNaN || weightKg.isInfinite) return 2000;
+    final raw = weightKg * 35;
+    if (raw.isNaN || raw.isInfinite) return 2000;
+    final ml = raw.round();
     // Làm tròn đến 50ml gần nhất
     return ((ml + 25) ~/ 50) * 50;
   }

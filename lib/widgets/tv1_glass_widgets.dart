@@ -17,6 +17,7 @@ class Tv1GlassScaffold extends StatelessWidget {
   final Widget? drawer;
   final Widget? floatingActionButton;
   final bool extendBodyBehindAppBar;
+  final bool? resizeToAvoidBottomInset;
 
   const Tv1GlassScaffold({
     super.key,
@@ -25,6 +26,7 @@ class Tv1GlassScaffold extends StatelessWidget {
     this.drawer,
     this.floatingActionButton,
     this.extendBodyBehindAppBar = false,
+    this.resizeToAvoidBottomInset,
   });
 
   @override
@@ -117,6 +119,7 @@ class Tv1GlassScaffold extends StatelessWidget {
           Scaffold(
             backgroundColor: Colors.transparent,
             extendBodyBehindAppBar: extendBodyBehindAppBar,
+            resizeToAvoidBottomInset: resizeToAvoidBottomInset,
             appBar: appBar,
             drawer: drawer,
             floatingActionButton: floatingActionButton,
