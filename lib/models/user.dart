@@ -12,19 +12,27 @@ class User {
     required this.username,
     this.phone,
     this.email,
-    required this.password,
+    this.password = '',
     this.passwordHash,
     this.passwordSalt,
   });
 
   Map<String, dynamic> toMap() {
+    assert(
+      passwordHash != null && passwordHash!.isNotEmpty,
+      'Bảo mật Zero Plaintext: Không thể lưu User vào SQLite khi chưa có password_hash đã băm.',
+    );
+    assert(
+      passwordSalt != null && passwordSalt!.isNotEmpty,
+      'Bảo mật Zero Plaintext: Không thể lưu User vào SQLite khi chưa có password_salt.',
+    );
     return {
       if (id > 0) 'id': id,
       'username': username,
       'phone': phone,
       'email': email,
-      'password_hash': passwordHash ?? password,
-      'password_salt': passwordSalt ?? 'default_salt',
+      'password_hash': passwordHash ?? '',
+      'password_salt': passwordSalt ?? '',
     };
   }
 

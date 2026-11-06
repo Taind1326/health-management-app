@@ -31,46 +31,70 @@ class _HealthGoalScreenState extends State<HealthGoalScreen> {
     super.dispose();
   }
 
-  void _handleAddGoal() {
+  Future<void> _handleAddGoal() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
     final newGoalText = _goalController.text.trim();
 
-    // Thêm mục tiêu vào AuthService in-memory & SQLite
-    final newGoal = AuthService().addGoal(_userId, newGoalText);
+    try {
+      // Thêm mục tiêu vào AuthService in-memory & SQLite (lấy ID tự tăng thực tế)
+      final newGoal = await AuthService().addGoal(_userId, newGoalText);
 
-    setState(() {
-      _goals.add(newGoal);
-    });
+      if (!mounted) return;
 
-    _goalController.clear();
+      setState(() {
+        _goals.add(newGoal);
+      });
 
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đã thêm mục tiêu sức khỏe.'),
-        backgroundColor: Color(0xFF0284C7),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
+      _goalController.clear();
 
-  void _handleDeleteGoal(HealthGoal item, {bool showSnackBar = true}) {
-    AuthService().deleteGoal(_userId, item.id);
-
-    setState(() {
-      _goals.removeWhere((g) => g.id == item.id);
-    });
-
-    if (showSnackBar) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Đã xóa mục tiêu sức khỏe.'),
+          content: Text('Đã thêm mục tiêu sức khỏe.'),
           backgroundColor: Color(0xFF0284C7),
           duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Thêm mục tiêu thất bại: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleDeleteGoal(HealthGoal item, {bool showSnackBar = true}) async {
+    try {
+      await AuthService().deleteGoal(_userId, item.id);
+
+      if (!mounted) return;
+
+      setState(() {
+        _goals.removeWhere((g) => g.id == item.id);
+      });
+
+      if (showSnackBar) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã xóa mục tiêu sức khỏe.'),
+            backgroundColor: Color(0xFF0284C7),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Xóa mục tiêu thất bại: ${e.toString()}'),
+          backgroundColor: Colors.red,
         ),
       );
     }

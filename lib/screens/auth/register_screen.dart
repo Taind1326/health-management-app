@@ -33,7 +33,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _handleRegister() {
+  Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -48,7 +48,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     final authService = AuthService();
 
-    if (authService.isUsernameTaken(username)) {
+    if (await authService.isUsernameTaken(username)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Tên tài khoản "$username" đã tồn tại. Vui lòng chọn tên khác.'),
@@ -58,7 +59,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    if (isPhone && authService.isPhoneTaken(phone)) {
+    if (isPhone && await authService.isPhoneTaken(phone)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Số điện thoại "$phone" đã được đăng ký.'),
@@ -68,7 +70,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    if (!isPhone && authService.isEmailTaken(email)) {
+    if (!isPhone && await authService.isEmailTaken(email)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Email "$email" đã được đăng ký.'),
@@ -78,25 +81,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // Đăng ký lưu vào bộ nhớ dùng chung & cơ sở dữ liệu
-    final newUser = authService.register(
-      fullName: fullName,
-      phone: phone,
-      email: email,
-      username: username,
-      password: password,
-    );
+    try {
+      // Đăng ký lưu vào bộ nhớ dùng chung & cơ sở dữ liệu SQLite trong transaction
+      final newUser = await authService.register(
+        fullName: fullName,
+        phone: phone,
+        email: email,
+        username: username,
+        password: password,
+      );
 
-    // Thông báo đăng ký thành công
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đăng ký thành công cho tài khoản "${newUser.username}"!'),
-        backgroundColor: Colors.green,
-      ),
-    );
+      if (!mounted) return;
 
-    // Chuyển về màn hình đăng nhập
-    Navigator.pop(context);
+      // Thông báo đăng ký thành công
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đăng ký thành công cho tài khoản "${newUser.username}"!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Chuyển về màn hình đăng nhập
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đăng ký không thành công: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override

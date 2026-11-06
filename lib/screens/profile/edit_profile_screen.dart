@@ -81,7 +81,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  void _handleSave() {
+  Future<void> _handleSave() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -131,66 +131,84 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     final authService = AuthService();
 
-    if (widget.isInitialSetup) {
-      // Cập nhật profile vào AuthService
-      authService.updateProfile(updatedProfile);
+    try {
+      if (widget.isInitialSetup) {
+        // Cập nhật profile vào AuthService & SQLite
+        await authService.updateProfile(updatedProfile);
 
-      // Thêm mục tiêu sức khỏe thông minh khởi tạo cho người dùng
-      final waterGoal = AuthService.calculateRecommendedWater(weight);
-      final bmr = AuthService.calculateBmr(
-        weightKg: weight,
-        heightCm: height,
-        age: age,
-        gender: _selectedGender!,
-      );
-      final tdee = AuthService.calculateTdee(bmr: bmr);
+        // Thêm mục tiêu sức khỏe thông minh khởi tạo cho người dùng
+        final waterGoal = AuthService.calculateRecommendedWater(weight);
+        final bmr = AuthService.calculateBmr(
+          weightKg: weight,
+          heightCm: height,
+          age: age,
+          gender: _selectedGender!,
+        );
+        final tdee = AuthService.calculateTdee(bmr: bmr);
 
-      int calorieTarget = tdee;
-      String dietMode = 'balanced';
-      int stepGoal = 8000;
+        int calorieTarget = tdee;
+        String dietMode = 'balanced';
+        int stepGoal = 8000;
 
-      if (_selectedGoal.contains('Giảm')) {
-        calorieTarget = tdee - 500;
-        dietMode = 'low_carb';
-        stepGoal = 10000;
-      } else if (_selectedGoal.contains('Tăng')) {
-        calorieTarget = tdee + 400;
-        dietMode = 'high_protein';
-        stepGoal = 7000;
-      }
+        if (_selectedGoal.contains('Giảm')) {
+          calorieTarget = tdee - 500;
+          dietMode = 'weight_loss'; // Chuẩn CHECK constraint SQLite ('weight_loss')
+          stepGoal = 10000;
+        } else if (_selectedGoal.contains('Tăng')) {
+          calorieTarget = tdee + 400;
+          dietMode = 'muscle_gain'; // Chuẩn CHECK constraint SQLite ('muscle_gain')
+          stepGoal = 7000;
+        } else {
+          dietMode = 'balanced';
+        }
 
-      authService.addGoal(
-        widget.currentProfile.userId,
-        '$_selectedGoal (Mục tiêu: $calorieTarget kcal/ngày, $waterGoal ml nước)',
-      );
-
-      // Đồng bộ thiết lập sang bảng user_settings của hệ thống nếu không trong môi trường test
-      if (!authService.isTestingMode) {
-        authService.repository.syncUserSettings(
+        await authService.addGoal(
           widget.currentProfile.userId,
-          waterGoalMl: waterGoal,
-          stepGoal: stepGoal,
-          dietMode: dietMode,
-        ).catchError((_) {});
+          '$_selectedGoal (Mục tiêu: $calorieTarget kcal/ngày, $waterGoal ml nước)',
+        );
+
+        // Đồng bộ thiết lập sang bảng user_settings của hệ thống nếu không trong môi trường test
+        if (!authService.isTestingMode) {
+          await authService.repository.syncUserSettings(
+            widget.currentProfile.userId,
+            waterGoalMl: waterGoal,
+            stepGoal: stepGoal,
+            dietMode: dietMode,
+          );
+        }
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Thiết lập hồ sơ sức khỏe ban đầu thành công!'),
+            backgroundColor: Color(0xFF0284C7),
+          ),
+        );
+
+        // Chuyển thẳng vào HomeScreen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const HomeScreen(),
+          ),
+        );
+      } else {
+        // Cập nhật profile vào AuthService & SQLite
+        await authService.updateProfile(updatedProfile);
+        if (!mounted) return;
+
+        // Trả dữ liệu đã cập nhật về cho ProfileScreen
+        Navigator.pop(context, updatedProfile);
       }
-
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Thiết lập hồ sơ sức khỏe ban đầu thành công!'),
-          backgroundColor: Color(0xFF0284C7),
+        SnackBar(
+          content: Text('Lưu thông tin thất bại: ${e.toString()}'),
+          backgroundColor: Colors.red,
         ),
       );
-
-      // Chuyển thẳng vào HomeScreen
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const HomeScreen(),
-        ),
-      );
-    } else {
-      // Trả dữ liệu đã cập nhật về cho ProfileScreen
-      Navigator.pop(context, updatedProfile);
     }
   }
 
@@ -456,7 +474,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Ước tính chỉ số: BMI ${previewBmi.toStringAsFixed(2)}',
+                              'Ước tính chỉ số: BMI ${(previewBmi.isFinite && !previewBmi.isNaN) ? previewBmi.toStringAsFixed(2) : "0.00"}',
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
@@ -469,7 +487,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '• BMR ước tính: ${previewBmr > 0 ? "${previewBmr.round()} kcal/ngày" : "Đang tính..."}\n• Lượng nước khuyến nghị: $previewWater ml/ngày',
+                        '• BMR ước tính: ${(previewBmr.isFinite && !previewBmr.isNaN && previewBmr > 0) ? "${previewBmr.round()} kcal/ngày" : "Đang tính..."}\n• Lượng nước khuyến nghị: $previewWater ml/ngày',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.white.withValues(alpha: 0.9),

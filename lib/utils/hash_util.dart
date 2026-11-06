@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 /// Tiện ích băm mật khẩu chuẩn SHA-256 và sinh chuỗi Salt
@@ -101,14 +102,13 @@ class HashUtil {
         .join();
   }
 
-  /// Sinh chuỗi salt ngẫu nhiên
+  /// Sinh chuỗi salt ngẫu nhiên đạt chuẩn an toàn mật mã CSPRNG bằng Random.secure()
   static String generateSalt([int length = 16]) {
-    final now = DateTime.now().microsecondsSinceEpoch.toString();
-    final randomKey = sha256('$now:health_app_salt');
-    if (randomKey.length > length) {
-      return randomKey.substring(0, length);
-    }
-    return randomKey.padRight(length, '0');
+    final random = Random.secure();
+    final byteCount = (length + 1) ~/ 2;
+    final bytes = List<int>.generate(byteCount, (_) => random.nextInt(256));
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return hex.substring(0, length);
   }
 
   /// Băm mật khẩu kết hợp salt
