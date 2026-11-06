@@ -112,36 +112,39 @@ class _AppIntroScreenState extends State<AppIntroScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
                   child: Center(
                     child: Tv1GlassCard(
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 36.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Tv1LayeredBadge(
-                            icon: slide.icon,
-                            size: 68,
-                            iconColor: const Color(0xFFE0F2FE),
-                          ),
-                          const SizedBox(height: 28),
-                          Text(
-                            slide.title,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 22.0),
+                      child: SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Tv1LayeredBadge(
+                              icon: slide.icon,
+                              size: 56,
+                              iconColor: const Color(0xFFE0F2FE),
                             ),
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            slide.description,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 15,
-                              height: 1.45,
-                              color: Colors.white.withValues(alpha: 0.88),
+                            const SizedBox(height: 20),
+                            Text(
+                              slide.title,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 21,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 12),
+                            Text(
+                              slide.description,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                height: 1.45,
+                                color: Colors.white.withValues(alpha: 0.88),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

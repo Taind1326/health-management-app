@@ -85,7 +85,7 @@ class _HealthGoalScreenState extends State<HealthGoalScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -137,101 +137,108 @@ class _HealthGoalScreenState extends State<HealthGoalScreen> {
               children: [
                 const Icon(Icons.track_changes, color: Color(0xFF7DD3FC)),
                 const SizedBox(width: 8),
-                Text(
-                  'Danh sách mục tiêu (${_goals.length})',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                Expanded(
+                  child: Text(
+                    'Danh sách mục tiêu (${_goals.length})',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
 
-            // Danh sách các mục tiêu (có hỗ trợ vuốt để xóa và nút thùng rác)
-            Expanded(
-              child: _goals.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Chưa có mục tiêu sức khỏe nào.\nHãy thêm mục tiêu đầu tiên của bạn!',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.75),
-                          fontSize: 16,
-                          height: 1.4,
+            // Danh sách các mục tiêu (hỗ trợ vuốt để xóa và nút thùng rác)
+            if (_goals.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40.0),
+                child: Center(
+                  child: Text(
+                    'Chưa có mục tiêu sức khỏe nào.\nHãy thêm mục tiêu đầu tiên của bạn!',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.75),
+                      fontSize: 16,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _goals.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final item = _goals[index];
+                  return Dismissible(
+                    key: Key('goal_${item.id}_${item.goal}'),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade400.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Icon(Icons.delete_outline, color: Colors.white),
+                          SizedBox(width: 8),
+                          Text(
+                            'Xóa',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    onDismissed: (_) {
+                      _handleDeleteGoal(item, showSnackBar: true);
+                    },
+                    child: Tv1GlassCard(
+                      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundColor: const Color(0xFF0284C7).withValues(alpha: 0.35),
+                          child: Text(
+                            '${index + 1}',
+                            style: const TextStyle(
+                              color: Color(0xFFE0F2FE),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          item.goal,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Color(0xFFFF6B6B),
+                          ),
+                          tooltip: 'Xóa mục tiêu',
+                          onPressed: () => _handleDeleteGoal(item, showSnackBar: true),
                         ),
                       ),
-                    )
-                  : ListView.separated(
-                      itemCount: _goals.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final item = _goals[index];
-                        return Dismissible(
-                          key: Key('goal_${item.id}_${item.goal}'),
-                          direction: DismissDirection.endToStart,
-                          background: Container(
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.only(right: 20),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade400.withValues(alpha: 0.85),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Icon(Icons.delete_outline, color: Colors.white),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Xóa',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          onDismissed: (_) {
-                            _handleDeleteGoal(item, showSnackBar: true);
-                          },
-                          child: Tv1GlassCard(
-                            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
-                            child: ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: CircleAvatar(
-                                backgroundColor: const Color(0xFF0284C7).withValues(alpha: 0.35),
-                                child: Text(
-                                  '${index + 1}',
-                                  style: const TextStyle(
-                                    color: Color(0xFFE0F2FE),
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                item.goal,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              trailing: IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  color: Color(0xFFFF6B6B),
-                                ),
-                                tooltip: 'Xóa mục tiêu',
-                                onPressed: () => _handleDeleteGoal(item, showSnackBar: true),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
                     ),
-            ),
+                  );
+                },
+              ),
           ],
         ),
       ),

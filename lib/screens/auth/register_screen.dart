@@ -110,7 +110,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
           child: Form(
             key: _formKey,
             child: Column(
@@ -137,22 +137,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // Tấm kính chứa Form đăng ký
                 Tv1GlassCard(
-                  padding: const EdgeInsets.all(22.0),
+                  padding: const EdgeInsets.all(18.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Thanh chuyển đổi SĐT / Email
                       SegmentedButton<String>(
+                        showSelectedIcon: false,
                         segments: const [
                           ButtonSegment(
                             value: 'phone',
-                            label: Text('Số điện thoại'),
-                            icon: Icon(Icons.phone_outlined),
+                            label: Text('Số điện thoại', maxLines: 1, overflow: TextOverflow.ellipsis),
+                            icon: Icon(Icons.phone_outlined, size: 18),
                           ),
                           ButtonSegment(
                             value: 'email',
-                            label: Text('Email'),
-                            icon: Icon(Icons.email_outlined),
+                            label: Text('Email', maxLines: 1, overflow: TextOverflow.ellipsis),
+                            icon: Icon(Icons.email_outlined, size: 18),
                           ),
                         ],
                         selected: {_contactType},
@@ -349,8 +350,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(height: 16),
 
                       // Dòng Đã có tài khoản? Đăng nhập
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           const Text(
                             'Đã có tài khoản?',

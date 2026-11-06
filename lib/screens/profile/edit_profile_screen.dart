@@ -454,12 +454,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         children: [
                           const Icon(Icons.insights, size: 20, color: Color(0xFF7DD3FC)),
                           const SizedBox(width: 8),
-                          Text(
-                            'Ước tính chỉ số: BMI $previewBmi',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF7DD3FC),
-                              fontSize: 15,
+                          Expanded(
+                            child: Text(
+                              'Ước tính chỉ số: BMI ${previewBmi.toStringAsFixed(2)}',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF7DD3FC),
+                                fontSize: 15,
+                              ),
                             ),
                           ),
                         ],
