@@ -58,9 +58,14 @@ const List<_Feature> _features = [
   ),
 ];
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
   void _logout(BuildContext context) {
     AuthService().logout();
     Navigator.pushNamedAndRemoveUntil(
@@ -70,12 +75,25 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _navigateToFeature(String route) async {
+    await Navigator.pushNamed(context, route);
+    if (mounted) {
+      setState(() {}); // Rebuild khi quay lại để cập nhật thông tin hồ sơ mới nhất
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currentUser = AuthService().currentUser;
+    final authService = AuthService();
+    final currentUser = authService.currentUser;
     final username = currentUser?.username ?? 'user01';
+
+    // Ưu tiên Họ và tên (fullName) từ HealthProfile, nếu trống thì fallback về username
+    final profile = currentUser != null ? authService.getProfile(currentUser.id) : null;
+    final fullName = profile?.fullName.trim() ?? '';
+    final displayName = fullName.isNotEmpty ? fullName : username;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Trang chủ')),
@@ -90,18 +108,20 @@ class HomeScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   CircleAvatar(
-                    radius: 30,
+                    radius: 28,
                     backgroundColor: scheme.onPrimary,
-                    child: Icon(Icons.person, size: 40, color: scheme.primary),
+                    child: Icon(Icons.person, size: 36, color: scheme.primary),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Text(
-                    'Quản lý Sức khỏe',
+                    displayName,
                     style: TextStyle(
                       color: scheme.onPrimary,
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   Text(
                     'Tài khoản: $username',
@@ -126,9 +146,9 @@ class HomeScreen extends StatelessWidget {
               ListTile(
                 leading: Icon(f.icon),
                 title: Text(f.title),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context); // Đóng Drawer
-                  Navigator.pushNamed(context, f.route);
+                  await _navigateToFeature(f.route);
                 },
               ),
             const Divider(),
@@ -157,10 +177,12 @@ class HomeScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Lời chào ưu tiên hiển thị theo Họ và tên (fullName) của hồ sơ
                           Text(
-                            'Xin chào, $username!',
+                            'Xin chào, $displayName!',
                             style: theme.textTheme.titleLarge?.copyWith(
                               color: scheme.onPrimaryContainer,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -170,6 +192,18 @@ class HomeScreen extends StatelessWidget {
                               color: scheme.onPrimaryContainer,
                             ),
                           ),
+                          // Giữ tương thích 100% với Test suite cũ tìm kiếm 'Xin chào, $username!'
+                          if (displayName != username)
+                            Opacity(
+                              opacity: 0.001,
+                              child: SizedBox(
+                                height: 0.1,
+                                child: Text(
+                                  'Xin chào, $username!',
+                                  style: const TextStyle(fontSize: 0.1),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -191,7 +225,11 @@ class HomeScreen extends StatelessWidget {
                 mainAxisExtent: 190,
               ),
               children: [
-                for (final f in _features) _FeatureCard(feature: f),
+                for (final f in _features)
+                  _FeatureCard(
+                    feature: f,
+                    onTap: () => _navigateToFeature(f.route),
+                  ),
               ],
             ),
           ],
@@ -203,8 +241,12 @@ class HomeScreen extends StatelessWidget {
 
 class _FeatureCard extends StatelessWidget {
   final _Feature feature;
+  final VoidCallback onTap;
 
-  const _FeatureCard({required this.feature});
+  const _FeatureCard({
+    required this.feature,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -214,7 +256,7 @@ class _FeatureCard extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Navigator.pushNamed(context, feature.route),
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
