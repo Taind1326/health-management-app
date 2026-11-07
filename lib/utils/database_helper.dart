@@ -2,16 +2,18 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 /// Database SQLite dùng chung cho toàn bộ ứng dụng.
-/// Đặt tại lib/utils/database_helper.dart.
 /// Không chứa dữ liệu mẫu hoặc logic riêng của từng module.
 class DatabaseHelper {
   DatabaseHelper._internal();
+
   static final DatabaseHelper _instance = DatabaseHelper._internal();
+
   factory DatabaseHelper() => _instance;
+
   static DatabaseHelper get instance => _instance;
 
   static const databaseName = 'health_app.db';
-  static const databaseVersion = 1;
+  static const databaseVersion = 2;
 
   // Dùng chung Future để các module mở đồng thời vẫn chỉ khởi tạo một lần.
   Future<Database>? _opening;
@@ -21,6 +23,7 @@ class DatabaseHelper {
   Future<Database> _openDatabase() async {
     try {
       final directory = await getDatabasesPath();
+
       return await openDatabase(
         p.join(directory, databaseName),
         version: databaseVersion,
@@ -36,7 +39,7 @@ class DatabaseHelper {
         onUpgrade: _onUpgrade,
       );
     } catch (_) {
-      _opening = null; // Cho phép thử mở lại khi lần trước thất bại.
+      _opening = null;
       rethrow;
     }
   }
@@ -46,8 +49,69 @@ class DatabaseHelper {
     int oldVersion,
     int newVersion,
   ) async {
-    // Khi tăng databaseVersion, thêm migration ở đây.
-    // Không DROP TABLE và tạo lại vì sẽ làm mất dữ liệu người dùng.
+    // Version 2: hỗ trợ thêm loại bữa phụ (snack).
+    // Giữ nguyên ID và dữ liệu bữa ăn/chi tiết bữa ăn hiện có.
+    if (oldVersion < 2 && newVersion >= 2) {
+      await db.execute('''
+        CREATE TABLE meals_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL
+            REFERENCES users(id) ON DELETE CASCADE,
+          meal_type TEXT NOT NULL CHECK(meal_type IN
+            ('breakfast','lunch','dinner','snack')),
+          meal_date TEXT NOT NULL
+        )
+      ''');
+
+      await db.execute(
+        'INSERT INTO meals_new (id, user_id, meal_type, meal_date) '
+        'SELECT id, user_id, meal_type, meal_date FROM meals',
+      );
+
+      await db.execute('''
+        CREATE TABLE meal_details_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          meal_id INTEGER NOT NULL
+            REFERENCES meals_new(id) ON DELETE CASCADE,
+          food_id INTEGER NOT NULL
+            REFERENCES foods(id) ON DELETE RESTRICT,
+          quantity REAL NOT NULL CHECK(quantity > 0)
+        )
+      ''');
+
+      await db.execute(
+        'INSERT INTO meal_details_new '
+        '(id, meal_id, food_id, quantity) '
+        'SELECT id, meal_id, food_id, quantity FROM meal_details',
+      );
+
+      // Xóa bảng con trước bảng cha cũ để không vi phạm khóa ngoại.
+      await db.execute('DROP TABLE meal_details');
+      await db.execute('DROP TABLE meals');
+
+      await db.execute('ALTER TABLE meals_new RENAME TO meals');
+
+      await db.execute('ALTER TABLE meal_details_new RENAME TO meal_details');
+
+      // Các index cũ bị xóa cùng bảng, vì vậy cần tạo lại.
+      await db.execute(
+        'CREATE INDEX idx_meals_user_time '
+        'ON meals(user_id, meal_date)',
+      );
+
+      await db.execute(
+        'CREATE INDEX idx_details_meal '
+        'ON meal_details(meal_id)',
+      );
+
+      await db.execute(
+        'CREATE INDEX idx_details_food '
+        'ON meal_details(food_id)',
+      );
+
+      return;
+    }
+
     throw UnsupportedError(
       'Chưa có migration từ version $oldVersion lên $newVersion.',
     );
@@ -70,9 +134,10 @@ class DatabaseHelper {
   /// Gọi hàm này thay vì xóa trực tiếp bảng users.
   Future<void> deleteUser(int userId) async {
     final db = await database;
+
     await db.transaction((txn) async {
-      // Xóa chi tiết qua meals trước khi cascade xóa foods.
       await txn.delete('meals', where: 'user_id = ?', whereArgs: [userId]);
+
       await txn.delete('users', where: 'id = ?', whereArgs: [userId]);
     });
   }
@@ -81,11 +146,43 @@ class DatabaseHelper {
   /// Không gọi khi dispose từng màn hình.
   Future<void> close() async {
     final opening = _opening;
+
     if (opening == null) return;
+
     final db = await opening;
+
     await db.close();
+
     _opening = null;
   }
+
+  /// Chỉ sử dụng trong môi trường kiểm thử.
+  Future<void> resetForTesting() async {
+    final directory = await getDatabasesPath();
+    final databasePath = p.join(directory, databaseName);
+
+    final opening = _opening;
+
+    if (opening != null) {
+      try {
+        final db = await opening;
+
+        if (db.isOpen) {
+          await db.close();
+        }
+      } catch (_) {
+        // Database có thể chưa mở thành công.
+      } finally {
+        _opening = null;
+      }
+    }
+
+    await deleteDatabase(databasePath);
+  }
+
+  // ============================================================
+  // CẤU TRÚC DATABASE
+  // ============================================================
 
   static const List<String> _schema = [
     '''CREATE TABLE users (
@@ -100,6 +197,7 @@ class DatabaseHelper {
       UNIQUE(phone),
       UNIQUE(email)
     )''',
+
     '''CREATE TABLE health_profiles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
@@ -110,11 +208,13 @@ class DatabaseHelper {
       weight_kg REAL CHECK(weight_kg IS NULL OR weight_kg > 0),
       bmi REAL CHECK(bmi IS NULL OR bmi > 0)
     )''',
+
     '''CREATE TABLE health_goals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       goal TEXT NOT NULL CHECK(length(trim(goal)) > 0)
     )''',
+
     '''CREATE TABLE health_metrics (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -134,6 +234,7 @@ class DatabaseHelper {
         OR (metric_type = 'weight' AND unit = 'kg')
         OR (metric_type = 'bmi' AND unit = 'kg/m²'))
     )''',
+
     '''CREATE TABLE activities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -147,6 +248,7 @@ class DatabaseHelper {
       destination TEXT,
       CHECK(type <> 'cycling' OR steps = 0)
     )''',
+
     '''CREATE TABLE sleep_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -155,6 +257,7 @@ class DatabaseHelper {
       wake_date TEXT NOT NULL,
       UNIQUE(user_id, wake_date)
     )''',
+
     '''CREATE TABLE foods (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -165,24 +268,29 @@ class DatabaseHelper {
       fat REAL NOT NULL CHECK(fat >= 0),
       portion_grams REAL CHECK(portion_grams IS NULL OR portion_grams > 0)
     )''',
+
     '''CREATE TABLE meals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      meal_type TEXT NOT NULL CHECK(meal_type IN ('breakfast','lunch','dinner')),
+      meal_type TEXT NOT NULL CHECK(meal_type IN
+        ('breakfast','lunch','dinner','snack')),
       meal_date TEXT NOT NULL
     )''',
+
     '''CREATE TABLE meal_details (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       meal_id INTEGER NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
       food_id INTEGER NOT NULL REFERENCES foods(id) ON DELETE RESTRICT,
       quantity REAL NOT NULL CHECK(quantity > 0)
     )''',
+
     '''CREATE TABLE water_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       amount_ml INTEGER NOT NULL CHECK(amount_ml > 0),
       recorded_at TEXT NOT NULL
     )''',
+
     '''CREATE TABLE medications (
       id TEXT NOT NULL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -191,6 +299,7 @@ class DatabaseHelper {
       unit TEXT NOT NULL CHECK(unit IN ('viên','ml','gói','giọt','nhát xịt')),
       note TEXT NOT NULL DEFAULT ''
     )''',
+
     '''CREATE TABLE medication_schedules (
       id TEXT NOT NULL PRIMARY KEY,
       medication_id TEXT NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
@@ -198,11 +307,13 @@ class DatabaseHelper {
       end_date TEXT,
       hour INTEGER NOT NULL CHECK(hour BETWEEN 0 AND 23),
       minute INTEGER NOT NULL CHECK(minute BETWEEN 0 AND 59),
-      repeat_type TEXT NOT NULL CHECK(repeat_type IN ('once','daily','selected_weekdays')),
+      repeat_type TEXT NOT NULL CHECK(repeat_type IN
+        ('once','daily','selected_weekdays')),
       weekdays TEXT NOT NULL DEFAULT '[]',
       is_enabled INTEGER NOT NULL DEFAULT 1 CHECK(is_enabled IN (0,1)),
       CHECK(end_date IS NULL OR end_date >= start_date)
     )''',
+
     '''CREATE TABLE medication_logs (
       id TEXT NOT NULL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -218,6 +329,7 @@ class DatabaseHelper {
       CHECK((status = 'taken' AND taken_at IS NOT NULL)
         OR (status = 'skipped' AND taken_at IS NULL))
     )''',
+
     '''CREATE TABLE reminders (
       id TEXT NOT NULL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -228,13 +340,15 @@ class DatabaseHelper {
       end_date TEXT,
       hour INTEGER NOT NULL CHECK(hour BETWEEN 0 AND 23),
       minute INTEGER NOT NULL CHECK(minute BETWEEN 0 AND 59),
-      repeat_type TEXT NOT NULL CHECK(repeat_type IN ('once','daily','selected_weekdays')),
+      repeat_type TEXT NOT NULL CHECK(repeat_type IN
+        ('once','daily','selected_weekdays')),
       weekdays TEXT NOT NULL DEFAULT '[]',
       is_enabled INTEGER NOT NULL DEFAULT 1 CHECK(is_enabled IN (0,1)),
       medication_schedule_id TEXT REFERENCES medication_schedules(id) ON DELETE CASCADE,
       CHECK(end_date IS NULL OR end_date >= start_date),
       CHECK(medication_schedule_id IS NULL OR type = 'medication')
     )''',
+
     '''CREATE TABLE user_settings (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       water_goal_ml INTEGER NOT NULL DEFAULT 2000 CHECK(water_goal_ml > 0),
@@ -244,6 +358,7 @@ class DatabaseHelper {
       diet_mode TEXT NOT NULL DEFAULT 'balanced' CHECK(diet_mode IN
         ('balanced','weight_loss','muscle_gain','vegetarian'))
     )''',
+
     'CREATE INDEX idx_goals_user ON health_goals(user_id)',
     'CREATE INDEX idx_metrics_user_type_time ON health_metrics(user_id, metric_type, recorded_at)',
     'CREATE INDEX idx_activities_user_time ON activities(user_id, recorded_at)',

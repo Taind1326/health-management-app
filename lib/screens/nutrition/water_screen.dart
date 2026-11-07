@@ -1,6 +1,8 @@
+
 import 'package:flutter/material.dart';
 
-import 'nutrition_store.dart';
+import '../../controllers/water_controller.dart';
+import '../../services/auth_service.dart';
 import 'water_history_screen.dart';
 
 class WaterScreen extends StatefulWidget {
@@ -11,26 +13,118 @@ class WaterScreen extends StatefulWidget {
 }
 
 class _WaterScreenState extends State<WaterScreen> {
-  final NutritionStore store = NutritionStore.instance;
+  final WaterController controller = WaterController.instance;
 
-  void _addWater(int amount) {
-    store.addWater(amount);
-    setState(() {});
+  bool _isInitializing = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_onControllerChanged);
+    _initialize();
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _initialize() async {
+    final userId = AuthService().currentUser?.id;
+
+    if (userId == null) {
+      if (!mounted) return;
+
+      setState(() {
+        _isInitializing = false;
+        _error =
+            'Không tìm thấy tài khoản đăng nhập. '
+            'Vui lòng đăng nhập lại.';
+      });
+
+      return;
+    }
+
+    // Sử dụng dữ liệu hiện tại nếu Controller đã tải đúng tài khoản.
+    if (controller.currentUserId == userId &&
+        !controller.isLoading &&
+        controller.error == null) {
+      _isInitializing = false;
+      _error = null;
+      return;
+    }
+
+    try {
+      await controller.initialize(userId);
+
+      if (!mounted) return;
+
+      setState(() {
+        _isInitializing = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isInitializing = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _addWater(int amount) async {
+    try {
+      await controller.addWater(amount);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã ghi nhận $amount ml nước.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể ghi nhận nước: $e'),
+        ),
+      );
+    }
   }
 
   Future<void> _editGoal() async {
     final newGoal = await showDialog<int>(
       context: context,
       builder: (dialogContext) {
-        return const _WaterGoalDialog();
+        return _WaterGoalDialog(
+          initialGoal: controller.waterGoalMl,
+        );
       },
     );
 
-    if (!mounted) return;
+    if (!mounted || newGoal == null) return;
 
-    if (newGoal != null) {
-      store.updateWaterGoal(newGoal);
-      setState(() {});
+    try {
+      await controller.updateWaterGoal(newGoal);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể cập nhật mục tiêu: $e'),
+        ),
+      );
     }
   }
 
@@ -42,15 +136,83 @@ class _WaterScreenState extends State<WaterScreen> {
       ),
     );
 
-    if (mounted) {
-      setState(() {});
+    if (!mounted) return;
+
+    try {
+      await controller.refresh();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể tải lịch sử nước: $e'),
+        ),
+      );
     }
+  }
+
+  Widget _buildError() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Theo dõi nước'),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _error ?? 'Không thể tải dữ liệu nước.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _isInitializing = true;
+                    _error = null;
+                  });
+
+                  _initialize();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Thử lại'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentWater = store.todayWaterTotalMl;
-    final waterGoal = store.waterGoalMl;
+    if (_isInitializing) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Theo dõi nước'),
+          centerTitle: true,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_error != null) {
+      return _buildError();
+    }
+
+    final currentWater = controller.todayWaterTotalMl;
+    final waterGoal = controller.waterGoalMl;
 
     final progress = waterGoal > 0
         ? (currentWater / waterGoal).clamp(0.0, 1.0).toDouble()
@@ -59,6 +221,7 @@ class _WaterScreenState extends State<WaterScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Theo dõi nước'),
+        centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -97,20 +260,26 @@ class _WaterScreenState extends State<WaterScreen> {
                 ],
               ),
             ),
+
             const SizedBox(height: 24),
+
             LinearProgressIndicator(
               value: progress,
               minHeight: 12,
               borderRadius: BorderRadius.circular(10),
             ),
+
             const SizedBox(height: 10),
+
             Text(
               '${(progress * 100).toInt()}% tiến độ',
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
               ),
             ),
+
             const SizedBox(height: 30),
+
             const Text(
               'Thêm nước',
               style: TextStyle(
@@ -118,7 +287,9 @@ class _WaterScreenState extends State<WaterScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
+
             const SizedBox(height: 12),
+
             Row(
               children: [
                 Expanded(
@@ -136,7 +307,9 @@ class _WaterScreenState extends State<WaterScreen> {
                 ),
               ],
             ),
+
             const SizedBox(height: 16),
+
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
@@ -155,18 +328,29 @@ class _WaterScreenState extends State<WaterScreen> {
 }
 
 class _WaterGoalDialog extends StatefulWidget {
-  const _WaterGoalDialog();
+  final int initialGoal;
+
+  const _WaterGoalDialog({
+    required this.initialGoal,
+  });
 
   @override
   State<_WaterGoalDialog> createState() => _WaterGoalDialogState();
 }
 
 class _WaterGoalDialogState extends State<_WaterGoalDialog> {
-  final TextEditingController _controller = TextEditingController(
-    text: NutritionStore.instance.waterGoalMl.toString(),
-  );
+  late final TextEditingController _controller;
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = TextEditingController(
+      text: widget.initialGoal.toString(),
+    );
+  }
 
   @override
   void dispose() {

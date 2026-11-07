@@ -1,24 +1,90 @@
+
 import 'package:flutter/material.dart';
 
+import '../../controllers/nutrition_controller.dart';
 import '../../models/meal.dart';
+import '../../services/auth_service.dart';
 import 'add_meal_screen.dart';
 import 'diet_plan_screen.dart';
 import 'food_image_analysis_screen.dart';
 import 'food_list_screen.dart';
-import 'nutrition_store.dart';
-import 'water_history_screen.dart';
 import 'water_screen.dart';
 
 class NutritionScreen extends StatefulWidget {
   const NutritionScreen({super.key});
 
   @override
-  State<NutritionScreen> createState() =>
-      _NutritionScreenState();
+  State<NutritionScreen> createState() => _NutritionScreenState();
 }
 
 class _NutritionScreenState extends State<NutritionScreen> {
-  final NutritionStore store = NutritionStore.instance;
+  final NutritionController controller = NutritionController.instance;
+
+  bool _isInitializing = true;
+  String? _initializationError;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_onControllerChanged);
+    _initialize();
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _initialize() async {
+    final userId = AuthService().currentUser?.id;
+
+    if (userId == null) {
+      if (!mounted) return;
+
+      setState(() {
+        _isInitializing = false;
+        _initializationError =
+            'Không tìm thấy tài khoản đăng nhập. '
+            'Vui lòng đăng nhập lại.';
+      });
+      return;
+    }
+
+    // Không tải lại nếu Controller đã có dữ liệu của đúng tài khoản.
+    if (controller.currentUserId == userId &&
+        !controller.isLoading &&
+        controller.error == null) {
+      _isInitializing = false;
+      _initializationError = null;
+      return;
+    }
+
+    try {
+      await controller.initialize(userId);
+
+      if (!mounted) return;
+
+      setState(() {
+        _isInitializing = false;
+        _initializationError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isInitializing = false;
+        _initializationError =
+            e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
 
   Future<void> _openScreen(Widget screen) async {
     await Navigator.push<void>(
@@ -28,8 +94,29 @@ class _NutritionScreenState extends State<NutritionScreen> {
       ),
     );
 
-    if (mounted) {
-      setState(() {});
+    if (!mounted) return;
+
+    final userId = AuthService().currentUser?.id;
+
+    if (userId == null) return;
+
+    try {
+      await controller.initialize(userId);
+
+      if (!mounted) return;
+
+      setState(() {
+        _initializationError = null;
+        _isInitializing = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isInitializing = false;
+        _initializationError =
+            e.toString().replaceFirst('Exception: ', '');
+      });
     }
   }
 
@@ -37,10 +124,50 @@ class _NutritionScreenState extends State<NutritionScreen> {
     return nutrient == 'Calo' ? 'kcal' : 'g';
   }
 
-  Widget _buildExceededWarning(
-    Map<String, double> exceeded,
-  ) {
-    final targets = store.dailyNutritionTargets;
+  Widget _buildInitializationError() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Dinh dưỡng & Nước'),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _initializationError ?? 'Không thể tải dữ liệu.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _isInitializing = true;
+                    _initializationError = null;
+                  });
+
+                  _initialize();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Thử lại'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExceededWarning(Map<String, double> exceeded) {
+    final targets = controller.dailyNutritionTargets;
 
     return Container(
       width: double.infinity,
@@ -66,7 +193,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Đã vượt mục tiêu dinh dưỡng',
+                  'Đã vượt mức tiêu dinh dưỡng',
                   style: TextStyle(
                     color: Colors.red.shade800,
                     fontSize: 17,
@@ -79,7 +206,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
           const SizedBox(height: 8),
           const Text(
             'Lượng dinh dưỡng ghi nhận hôm nay đã vượt '
-            'mục tiêu tham khảo của chế độ đang chọn:',
+            'mức tiêu tham khảo của chế độ đang chọn:',
           ),
           const SizedBox(height: 8),
           ...exceeded.entries.map((entry) {
@@ -106,8 +233,24 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final todayMeals = store.todayMeals;
-    final exceeded = store.exceededNutritionToday;
+    if (_isInitializing) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Dinh dưỡng & Nước'),
+          centerTitle: true,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_initializationError != null) {
+      return _buildInitializationError();
+    }
+
+    final todayMeals = controller.todayMeals;
+    final exceeded = controller.exceededNutritionToday;
 
     return Scaffold(
       appBar: AppBar(
@@ -142,7 +285,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               child: Column(
                 children: [
                   Text(
-                    '${formatNutritionValue(store.totalCaloriesToday)} kcal',
+                    '${formatNutritionValue(controller.totalCaloriesToday)} kcal',
                     style: const TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.bold,
@@ -164,7 +307,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                   child: _NutritionCard(
                     title: 'Protein',
                     value:
-                        '${formatNutritionValue(store.totalProteinToday)} g',
+                        '${formatNutritionValue(controller.totalProteinToday)} g',
                     icon: Icons.fitness_center,
                   ),
                 ),
@@ -173,7 +316,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                   child: _NutritionCard(
                     title: 'Carb',
                     value:
-                        '${formatNutritionValue(store.totalCarbToday)} g',
+                        '${formatNutritionValue(controller.totalCarbToday)} g',
                     icon: Icons.grain,
                   ),
                 ),
@@ -182,7 +325,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                   child: _NutritionCard(
                     title: 'Fat',
                     value:
-                        '${formatNutritionValue(store.totalFatToday)} g',
+                        '${formatNutritionValue(controller.totalFatToday)} g',
                     icon: Icons.opacity,
                   ),
                 ),
@@ -267,14 +410,6 @@ class _NutritionScreenState extends State<NutritionScreen> {
                 const WaterScreen(),
               ),
             ),
-
-            _ActionButton(
-              icon: Icons.history,
-              title: 'Lịch sử nước',
-              onTap: () => _openScreen(
-                const WaterHistoryScreen(),
-              ),
-            ),
           ],
         ),
       ),
@@ -282,10 +417,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
   }
 
   Widget _buildMealCard(Meal meal) {
-    final details = store.detailsForMeal(meal.id);
+    final details = controller.detailsForMeal(meal.id);
 
     final foods = details.map((detail) {
-      final food = store.foodById(detail.foodId);
+      final food = controller.foodById(detail.foodId);
 
       if (food == null) {
         return 'Không tìm thấy món ăn';
@@ -313,7 +448,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
         ),
         subtitle: Text(foods),
         trailing: Text(
-          '${formatNutritionValue(store.caloriesForMeal(meal))} kcal',
+          '${formatNutritionValue(controller.caloriesForMeal(meal))} kcal',
         ),
       ),
     );
@@ -344,7 +479,10 @@ class _NutritionCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(icon, color: Theme.of(context).colorScheme.primary),
+          Icon(
+            icon,
+            color: Theme.of(context).colorScheme.primary,
+          ),
           const SizedBox(height: 6),
           Text(
             title,
@@ -381,9 +519,7 @@ class _ActionButton extends StatelessWidget {
           onPressed: onTap,
           icon: Icon(icon),
           label: Padding(
-            padding: const EdgeInsets.symmetric(
-              vertical: 14,
-            ),
+            padding: const EdgeInsets.symmetric(vertical: 14),
             child: Text(title),
           ),
         ),

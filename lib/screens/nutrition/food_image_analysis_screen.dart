@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import '../../models/food.dart';
-import 'nutrition_store.dart';
+import '../../controllers/nutrition_controller.dart';
 
 class FoodImageAnalysisScreen extends StatefulWidget {
   const FoodImageAnalysisScreen({super.key});
@@ -20,16 +21,20 @@ class _FoodImageAnalysisScreenState
     extends State<FoodImageAnalysisScreen> {
   static const String _apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:3000',
+    defaultValue: 'http://10.0.2.2:3000',
   );
 
   final ImagePicker _picker = ImagePicker();
-  final NutritionStore store = NutritionStore.instance;
+
+  final NutritionController controller =
+      NutritionController.instance;
 
   XFile? _image;
   Map<String, dynamic>? _result;
+
   bool _loading = false;
   bool _saving = false;
+
   String? _error;
 
   String _selectedMealType = 'Bữa trưa';
@@ -102,7 +107,9 @@ class _FoodImageAnalysisScreenState
       try {
         decoded = jsonDecode(response.body);
       } on FormatException {
-        throw Exception('Máy chủ trả về dữ liệu không hợp lệ.');
+        throw Exception(
+          'Máy chủ trả về dữ liệu không hợp lệ.',
+        );
       }
 
       if (response.statusCode < 200 ||
@@ -117,7 +124,9 @@ class _FoodImageAnalysisScreenState
       }
 
       if (decoded is! Map<String, dynamic>) {
-        throw Exception('Dữ liệu trả về không hợp lệ.');
+        throw Exception(
+          'Dữ liệu trả về không hợp lệ.',
+        );
       }
 
       if (!mounted) return;
@@ -177,7 +186,7 @@ class _FoodImageAnalysisScreenState
         .replaceAll(RegExp(r'\.0$'), '');
   }
 
-  void _saveToDiary() {
+  Future<void> _saveToDiary() async {
     if (_saving) return;
 
     if (_foods.isEmpty) {
@@ -189,15 +198,30 @@ class _FoodImageAnalysisScreenState
       return;
     }
 
+    final userId = controller.currentUserId;
+
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Dữ liệu dinh dưỡng chưa được khởi tạo. '
+            'Vui lòng quay lại màn hình chính.',
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _saving = true;
+      _error = null;
     });
 
     try {
       final recognizedFoods = _foods.map((item) {
         return Food(
           id: 0,
-          userId: NutritionStore.currentUserId,
+          userId: userId,
           name: (item['name']?.toString() ?? '').trim(),
           calories: _number(item, 'calories_kcal'),
           protein: _number(item, 'protein_g'),
@@ -209,7 +233,7 @@ class _FoodImageAnalysisScreenState
         );
       }).toList();
 
-      store.addRecognizedMeal(
+      await controller.addRecognizedMeal(
         mealType: _selectedMealType,
         recognizedFoods: recognizedFoods,
       );
@@ -230,12 +254,16 @@ class _FoodImageAnalysisScreenState
 
       setState(() {
         _saving = false;
+        _error = e.toString().replaceFirst(
+              'Exception: ',
+              '',
+            );
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Không thể lưu bữa ăn: $e',
+            'Không thể lưu bữa ăn: $_error',
           ),
         ),
       );
