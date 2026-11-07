@@ -31,7 +31,6 @@ class AuthRepository {
         final hash = HashUtil.hashPassword('123456', salt);
 
         final userId = await txn.insert('users', {
-          'id': 1,
           'username': 'user01',
           'phone': '0901234567',
           'email': 'user01@example.com',

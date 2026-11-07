@@ -1,3 +1,6 @@
+import '../../repositories/medication_repository.dart';
+import 'medication_style.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../models/medication_schedule.dart';
@@ -61,6 +64,7 @@ String _scheduleDescription(MedicationSchedule schedule) {
 }
 
 class ReminderScreen extends StatefulWidget {
+  final int userId;
   final List<Reminder> reminders;
   final Map<String, String> medicationSchedules;
   final Map<String, MedicationSchedule> scheduleDetails;
@@ -68,6 +72,7 @@ class ReminderScreen extends StatefulWidget {
 
   const ReminderScreen({
     super.key,
+    required this.userId,
     required this.reminders,
     required this.medicationSchedules,
     required this.scheduleDetails,
@@ -87,23 +92,50 @@ class _ReminderScreenState extends State<ReminderScreen> {
     _reminders = List.of(widget.reminders);
   }
 
-  void _notifyParent() {
-    widget.onChanged(List.of(_reminders));
+  bool _saving = false;
+  Future<void> _notifyParent() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final repository = MedicationRepository(widget.userId);
+    try {
+      await repository.saveReminders(List.of(_reminders));
+      if (!mounted) return;
+      widget.onChanged(List.of(_reminders));
+    } catch (e) {
+      try {
+        final saved = await repository.reminders();
+        if (mounted)
+          setState(() {
+            _reminders
+              ..clear()
+              ..addAll(saved);
+          });
+      } catch (_) {
+        /* Hiển thị lỗi ghi bên dưới; không thông báo thành công. */
+      }
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(medError(e))));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _openForm({Reminder? reminder}) async {
+    if (_saving) return;
     final result = await Navigator.push<Reminder>(
       context,
       MaterialPageRoute<Reminder>(
         builder: (context) => _ReminderFormScreen(
           reminder: reminder,
+          userId: widget.userId,
           medicationSchedules: widget.medicationSchedules,
           scheduleDetails: widget.scheduleDetails,
         ),
       ),
     );
 
-    if (!mounted || result == null) return;
+    if (!mounted || result == null || _saving) return;
 
     final duplicate = _reminders.any(
       (item) =>
@@ -139,6 +171,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
   }
 
   void _toggleReminder(Reminder reminder, bool enabled) {
+    if (_saving) return;
     final schedule = widget.scheduleDetails[reminder.medicationScheduleId];
 
     if (enabled &&
@@ -174,7 +207,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
   }
 
   Future<void> _deleteReminder(Reminder reminder) async {
-    final confirmed = await showDialog<bool>(
+    if (_saving) return;
+    final confirmed = await showMedicationDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Xóa nhắc nhở'),
@@ -192,7 +226,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
       ),
     );
 
-    if (!mounted || confirmed != true) return;
+    if (!mounted || confirmed != true || _saving) return;
 
     setState(() {
       _reminders.removeWhere((item) => item.id == reminder.id);
@@ -203,92 +237,115 @@ class _ReminderScreenState extends State<ReminderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Nhắc nhở')),
-      body: _reminders.isEmpty
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Bạn chưa tạo nhắc nhở nào.\n'
-                  'Bấm “Thêm nhắc nhở” để bắt đầu.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-              children: _reminders.map((reminder) {
-                final linkedLabel =
-                    widget.medicationSchedules[reminder.medicationScheduleId];
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                reminder.title,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ),
-                            Switch(
-                              value: reminder.isEnabled,
-                              onChanged: (value) =>
-                                  _toggleReminder(reminder, value),
-                            ),
-                          ],
-                        ),
-                        Text(
-                          '${_typeLabel(reminder.type)} • '
-                          '${_timeLabel(reminder.hour, reminder.minute)}',
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${_repeatLabel(reminder.repeat, reminder.weekdays)}'
-                          ' • ${reminder.isEnabled ? 'Đang bật' : 'Đã tắt'}',
-                        ),
-                        const SizedBox(height: 4),
-                        Text('Bắt đầu: ${_dateLabel(reminder.startDate)}'),
-                        if (reminder.endDate != null) ...[
-                          const SizedBox(height: 4),
-                          Text('Kết thúc: ${_dateLabel(reminder.endDate!)}'),
-                        ],
-                        if (reminder.type == ReminderType.medication) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            linkedLabel == null
-                                ? 'Lịch thuốc không còn tồn tại.'
-                                : 'Lịch thuốc: $linkedLabel',
-                          ),
-                        ],
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          children: [
-                            TextButton.icon(
-                              onPressed: () => _openForm(reminder: reminder),
-                              icon: const Icon(Icons.edit_outlined),
-                              label: const Text('Sửa'),
-                            ),
-                            TextButton.icon(
-                              onPressed: () => _deleteReminder(reminder),
-                              icon: const Icon(Icons.delete_outline),
-                              label: const Text('Xóa'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
+    return MedicationScaffold(
+      appBar: AppBar(
+        title: Text(_saving ? 'Đang lưu lịch nhắc…' : 'Lịch nhắc đã lưu'),
+      ),
+      body: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Lịch nhắc được lưu trong ứng dụng. Thông báo hệ điều hành chưa được tích hợp.',
             ),
+          ),
+          Expanded(
+            child: _reminders.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'Bạn chưa tạo nhắc nhở nào.\n'
+                        'Bấm “Thêm nhắc nhở” để bắt đầu.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                    children: _reminders.map((reminder) {
+                      final linkedLabel = widget
+                          .medicationSchedules[reminder.medicationScheduleId];
+
+                      return MedicationGlassCard(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      reminder.title,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  Switch(
+                                    value: reminder.isEnabled,
+                                    onChanged: (value) =>
+                                        _toggleReminder(reminder, value),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                '${_typeLabel(reminder.type)} • '
+                                '${_timeLabel(reminder.hour, reminder.minute)}',
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${_repeatLabel(reminder.repeat, reminder.weekdays)}'
+                                ' • ${reminder.isEnabled ? 'Đang bật' : 'Đã tắt'}',
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Bắt đầu: ${_dateLabel(reminder.startDate)}',
+                              ),
+                              if (reminder.endDate != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Kết thúc: ${_dateLabel(reminder.endDate!)}',
+                                ),
+                              ],
+                              if (reminder.type == ReminderType.medication) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  linkedLabel == null
+                                      ? 'Lịch thuốc không còn tồn tại.'
+                                      : 'Lịch thuốc: $linkedLabel',
+                                ),
+                              ],
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () =>
+                                        _openForm(reminder: reminder),
+                                    icon: const Icon(Icons.edit_outlined),
+                                    label: const Text('Sửa'),
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: () => _deleteReminder(reminder),
+                                    icon: const Icon(Icons.delete_outline),
+                                    label: const Text('Xóa'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openForm(),
         icon: const Icon(Icons.add),
@@ -299,11 +356,13 @@ class _ReminderScreenState extends State<ReminderScreen> {
 }
 
 class _ReminderFormScreen extends StatefulWidget {
+  final int userId;
   final Reminder? reminder;
   final Map<String, String> medicationSchedules;
   final Map<String, MedicationSchedule> scheduleDetails;
 
   const _ReminderFormScreen({
+    required this.userId,
     this.reminder,
     required this.medicationSchedules,
     required this.scheduleDetails,
@@ -346,7 +405,11 @@ class _ReminderFormScreenState extends State<_ReminderFormScreen> {
   }
 
   Future<void> _pickTime() async {
-    final selected = await showTimePicker(context: context, initialTime: _time);
+    final selected = await showTimePicker(
+      context: context,
+      initialTime: _time,
+      builder: (ctx, child) => Theme(data: medicationTheme(), child: child!),
+    );
 
     if (!mounted || selected == null) return;
     setState(() => _time = selected);
@@ -405,7 +468,7 @@ class _ReminderFormScreenState extends State<_ReminderFormScreen> {
 
     final reminder = Reminder(
       id: existing?.id ?? 'reminder-${now.microsecondsSinceEpoch}',
-      userId: existing?.userId ?? 1,
+      userId: widget.userId,
       title: _titleController.text.trim().replaceAll(RegExp(r'\s+'), ' '),
       type: _type,
       startDate:
@@ -432,7 +495,7 @@ class _ReminderFormScreenState extends State<_ReminderFormScreen> {
         .where((entry) => widget.scheduleDetails.containsKey(entry.key))
         .toList();
 
-    return Scaffold(
+    return MedicationScaffold(
       appBar: AppBar(
         title: Text(widget.reminder == null ? 'Thêm nhắc nhở' : 'Sửa nhắc nhở'),
       ),

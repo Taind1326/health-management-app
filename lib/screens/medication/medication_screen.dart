@@ -1,263 +1,188 @@
 import 'package:flutter/material.dart';
 
 import '../../models/medication.dart';
-import 'medication_form_screen.dart';
 import '../../models/medication_schedule.dart';
-import 'medication_schedule_screen.dart';
-import '../../models/medication_log.dart';
-import 'medication_history_screen.dart';
 import '../../models/reminder.dart';
+import '../../services/auth_service.dart';
+import '../../services/medication_rules.dart';
+import '../../repositories/medication_repository.dart';
+import 'medication_form_screen.dart';
+import 'medication_schedule_screen.dart';
+import 'medication_history_screen.dart';
+import 'medication_stock_screen.dart';
 import 'reminder_screen.dart';
+import 'medication_style.dart';
 
 class MedicationScreen extends StatefulWidget {
   const MedicationScreen({super.key});
-
   @override
   State<MedicationScreen> createState() => _MedicationScreenState();
 }
 
 class _MedicationScreenState extends State<MedicationScreen> {
-  final Map<String, List<MedicationSchedule>> _schedulesByMedication = {};
-  final List<MedicationLog> _medicationLogs = [];
-  final List<Reminder> _reminders = [];
-  // Dữ liệu mẫu phục vụ prototype đợt 1.
-  final List<Medication> _medications = [
-    const Medication(
-      id: 'medication-001',
-      userId: 1,
-      name: 'Thuốc mẫu A',
-      dosage: '1',
-      unit: 'viên',
-      note: 'Dữ liệu minh họa cho giao diện.',
-    ),
-    const Medication(
-      id: 'medication-002',
-      userId: 1,
-      name: 'Thuốc mẫu B',
-      dosage: '5',
-      unit: 'ml',
-    ),
-  ];
-
-  void _openMedicationHistory() {
-    final schedules = _schedulesByMedication.values
-        .expand((items) => items)
-        .toList();
-
-    Navigator.push<void>(
-      context,
-      MaterialPageRoute<void>(
-        builder: (context) => MedicationHistoryScreen(
-          medications: List.of(_medications),
-          schedules: schedules,
-          logs: List.of(_medicationLogs),
-          onLogChanged: (updated) {
-            if (!mounted) return;
-
-            setState(() {
-              final index = _medicationLogs.indexWhere(
-                (log) => log.id == updated.id,
-              );
-
-              if (index == -1) {
-                _medicationLogs.add(updated);
-              } else {
-                _medicationLogs[index] = updated;
-              }
-            });
-          },
-        ),
-      ),
-    );
+  MedicationRepository? repo;
+  List<Medication> medications = [];
+  List<MedicationSchedule> schedules = [];
+  List<Reminder> reminders = [];
+  List<Map<String, Object?>> logs = [];
+  bool loading = true, busy = false;
+  String? error;
+  @override
+  void initState() {
+    super.initState();
+    final user = AuthService().currentUser;
+    if (user != null) repo = MedicationRepository(user.id);
+    _load();
   }
 
-  void _openReminders() {
-    final scheduleLabels = <String, String>{};
-    final scheduleDetails = <String, MedicationSchedule>{};
-
-    for (final medication in _medications) {
-      final schedules = _schedulesByMedication[medication.id] ?? [];
-
-      for (final schedule in schedules) {
-        final hour = schedule.hour.toString().padLeft(2, '0');
-        final minute = schedule.minute.toString().padLeft(2, '0');
-
-        scheduleLabels[schedule.id] = '${medication.name} — $hour:$minute';
-
-        scheduleDetails[schedule.id] = schedule;
-      }
+  Future<void> _load() async {
+    if (repo == null) {
+      if (mounted)
+        setState(() {
+          loading = false;
+          error = 'Vui lòng đăng nhập để quản lý thuốc.';
+        });
+      return;
     }
-
-    Navigator.push<void>(
-      context,
-      MaterialPageRoute<void>(
-        builder: (context) => ReminderScreen(
-          reminders: List.of(_reminders),
-          medicationSchedules: scheduleLabels,
-          scheduleDetails: scheduleDetails,
-          onChanged: (updated) {
-            if (!mounted) return;
-
-            setState(() {
-              _reminders
-                ..clear()
-                ..addAll(updated);
-            });
-          },
-        ),
-      ),
-    );
+    try {
+      final meds = await repo!.medications();
+      final sch = await repo!.schedules();
+      final rem = await repo!.reminders();
+      final history = await repo!.logs();
+      if (!mounted) return;
+      setState(() {
+        medications = meds;
+        schedules = sch;
+        reminders = rem;
+        logs = history;
+        loading = false;
+        error = null;
+      });
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          error = medError(e);
+          loading = false;
+        });
+    }
   }
 
-  Future<void> _openMedicationSchedule(Medication medication) async {
-    final result = await Navigator.push<List<MedicationSchedule>>(
-      context,
-      MaterialPageRoute<List<MedicationSchedule>>(
-        builder: (context) => MedicationScheduleScreen(
-          medication: medication,
-          schedules: _schedulesByMedication[medication.id] ?? [],
-        ),
-      ),
-    );
-
-    if (!mounted || result == null) return;
-
-    setState(() {
-      final oldIds = (_schedulesByMedication[medication.id] ?? [])
-          .map((schedule) => schedule.id)
-          .toSet();
-
-      final newIds = result.map((schedule) => schedule.id).toSet();
-      final removedIds = oldIds.difference(newIds);
-
-      _schedulesByMedication[medication.id] = List.of(result);
-
-      _reminders.removeWhere(
-        (reminder) => removedIds.contains(reminder.medicationScheduleId),
-      );
-    });
-
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Đã lưu lịch uống.')));
+  Future<void> _run(Future<void> Function() action) async {
+    if (busy || repo == null) return;
+    setState(() => busy = true);
+    try {
+      await action();
+      await _load();
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(medError(e))));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
-  Future<void> _openMedicationForm({Medication? medication}) async {
+  Future<void> _form({Medication? med}) async {
+    if (repo == null || busy) return;
     final result = await Navigator.push<Medication>(
       context,
-      MaterialPageRoute<Medication>(
-        builder: (context) =>
-            MedicationFormScreen(medication: medication, userId: 1),
+      MaterialPageRoute(
+        builder: (_) =>
+            MedicationFormScreen(medication: med, userId: repo!.userId),
       ),
     );
-
     if (!mounted || result == null) return;
+    await _run(() => repo!.saveMedication(result, isNew: med == null));
+  }
 
-    setState(() {
-      if (medication == null) {
-        _medications.add(result);
-      } else {
-        final index = _medications.indexWhere(
-          (item) => item.id == medication.id,
-        );
-
-        if (index != -1) {
-          _medications[index] = result;
-        }
-      }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          medication == null ? 'Đã thêm thuốc.' : 'Đã cập nhật thuốc.',
+  Future<void> _schedule(Medication med) async {
+    final result = await Navigator.push<List<MedicationSchedule>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MedicationScheduleScreen(
+          medication: med,
+          schedules: schedules.where((s) => s.medicationId == med.id).toList(),
         ),
       ),
     );
+    if (!mounted || result == null) return;
+    await _run(() => repo!.saveSchedules(med.id, result));
   }
 
-  Future<void> _deleteMedication(Medication medication) async {
-    final confirmed = await showDialog<bool>(
+  Future<void> _delete(Medication med) async {
+    final confirmed = await showMedicationDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Xóa thuốc'),
         content: Text(
-          'Bạn muốn xóa "${medication.name}"?\n\n'
-          'Các lịch uống và nhắc nhở liên quan cũng sẽ bị xóa. '
-          'Lịch sử đã ghi nhận được giữ lại.',
+          'Xóa ${med.name} cùng lịch uống và nhắc liên kết? Lịch sử uống đã ghi nhận vẫn được giữ lại.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Hủy'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
+            onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Xóa'),
           ),
         ],
       ),
     );
-
     if (!mounted || confirmed != true) return;
-
-    final removedScheduleIds = (_schedulesByMedication[medication.id] ?? [])
-        .map((schedule) => schedule.id)
-        .toSet();
-
-    setState(() {
-      _reminders.removeWhere(
-        (reminder) =>
-            removedScheduleIds.contains(reminder.medicationScheduleId),
-      );
-
-      _medications.removeWhere((item) => item.id == medication.id);
-
-      _schedulesByMedication.remove(medication.id);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Đã xóa thuốc khỏi danh sách.')),
-    );
+    await _run(() => repo!.deleteMedication(med.id));
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.medication_outlined,
-              size: 72,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Bạn chưa thêm thuốc nào',
-              style: Theme.of(context).textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Thêm thuốc khi bạn cần theo dõi lịch uống.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: () => _openMedicationForm(),
-              icon: const Icon(Icons.add),
-              label: const Text('Thêm thuốc'),
-            ),
-          ],
+  Future<void> _history() async {
+    if (repo == null || busy) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MedicationHistoryScreen(userId: repo!.userId),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _reminders() async {
+    if (repo == null || busy) return;
+    final labels = <String, String>{};
+    final details = <String, MedicationSchedule>{};
+    for (final s in schedules) {
+      final m = medications.firstWhere((m) => m.id == s.medicationId);
+      labels[s.id] =
+          '${m.name} — ${s.hour.toString().padLeft(2, '0')}:${s.minute.toString().padLeft(2, '0')}';
+      details[s.id] = s;
+    }
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReminderScreen(
+          userId: repo!.userId,
+          reminders: reminders,
+          medicationSchedules: labels,
+          scheduleDetails: details,
+          onChanged: (_) {},
         ),
       ),
     );
+    if (mounted) await _load();
   }
 
-  Widget _buildMedicationCard(Medication medication) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+  Future<void> _stock(Medication med) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => MedicationStockScreen(medication: med)),
+    );
+    if (mounted) await _load();
+  }
+
+  Widget _card(Medication med) {
+    final sch = schedules.where((s) => s.medicationId == med.id).toList();
+    final count = MedicationRules.remainingSevenDays(sch, logs, DateTime.now());
+    final need = count * double.parse(med.dosage);
+    final shortage = med.stockAmount != null && med.stockAmount! + 1e-7 < need;
+    return MedicationGlassCard(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -269,37 +194,64 @@ class _MedicationScreenState extends State<MedicationScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    medication.name,
-                    style: Theme.of(context).textTheme.titleMedium,
+                    med.name,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 PopupMenuButton<String>(
-                  tooltip: 'Tùy chọn thuốc',
-                  onSelected: (value) {
-                    if (value == 'edit') {
-                      _openMedicationForm(medication: medication);
-                    } else if (value == 'delete') {
-                      _deleteMedication(medication);
-                    }
+                  onSelected: (v) {
+                    if (v == 'edit') _form(med: med);
+                    if (v == 'delete') _delete(med);
                   },
-                  itemBuilder: (context) => const [
+                  itemBuilder: (_) => const [
                     PopupMenuItem(value: 'edit', child: Text('Sửa thuốc')),
                     PopupMenuItem(value: 'delete', child: Text('Xóa thuốc')),
                   ],
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text('Liều mỗi lần: ${medication.dosage} ${medication.unit}'),
-            if (medication.note.trim().isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text('Ghi chú: ${medication.note}'),
-            ],
+            Text(
+              'Liều mỗi lần: ${medNumber(double.parse(med.dosage))} ${med.unit}',
+            ),
+            if (med.note.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(med.note),
+              ),
             const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => _openMedicationSchedule(medication),
-              icon: const Icon(Icons.schedule),
-              label: const Text('Lịch uống'),
+            Text(
+              med.stockAmount == null
+                  ? 'Chưa theo dõi lượng thuốc'
+                  : 'Lượng còn lại: ${medNumber(med.stockAmount!)} ${med.unit}',
+            ),
+            Text(MedicationRules.courseLabel(sch, DateTime.now())),
+            if (shortage)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Có thể không đủ cho $count lần chưa xác nhận trong 7 ngày từ hôm nay. Kiểm tra đơn và hướng dẫn điều trị.',
+                  style: const TextStyle(color: Color(0xFFFFE082)),
+                ),
+              ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: busy ? null : () => _schedule(med),
+                  icon: const Icon(Icons.schedule),
+                  label: const Text('Lịch uống'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: busy ? null : () => _stock(med),
+                  icon: const Icon(Icons.inventory_2_outlined),
+                  label: const Text('Lượng thuốc / đợt dùng'),
+                ),
+              ],
             ),
           ],
         ),
@@ -308,45 +260,74 @@ class _MedicationScreenState extends State<MedicationScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Thuốc & Nhắc nhở'),
-        actions: [
-          IconButton(
-            tooltip: 'Lịch sử uống thuốc',
-            onPressed: _openMedicationHistory,
-            icon: const Icon(Icons.history),
-          ),
-          IconButton(
-            tooltip: 'Quản lý nhắc nhở',
-            onPressed: _openReminders,
-            icon: const Icon(Icons.notifications_outlined),
-          ),
-        ],
-      ),
-      body: _medications.isEmpty
-          ? _buildEmptyState()
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-              children: [
-                Text(
-                  'Danh sách thuốc (${_medications.length})',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                const Text('Dữ liệu mẫu để minh họa giao diện.'),
-                const SizedBox(height: 16),
-                ..._medications.map(_buildMedicationCard),
-              ],
+  Widget build(BuildContext context) => MedicationScaffold(
+    appBar: AppBar(
+      title: const Text('Thuốc và nhắc nhở'),
+      actions: [
+        IconButton(
+          tooltip: 'Lịch sử uống thuốc',
+          onPressed: loading || error != null ? null : _history,
+          icon: const Icon(Icons.history),
+        ),
+        IconButton(
+          tooltip: 'Quản lý lịch nhắc',
+          onPressed: loading || error != null ? null : _reminders,
+          icon: const Icon(Icons.notifications_outlined),
+        ),
+      ],
+    ),
+    body: loading
+        ? const Center(child: CircularProgressIndicator())
+        : error != null
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(error!),
+                  TextButton(onPressed: _load, child: const Text('Tải lại')),
+                ],
+              ),
             ),
-      floatingActionButton: _medications.isEmpty
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => _openMedicationForm(),
-              icon: const Icon(Icons.add),
-              label: const Text('Thêm thuốc'),
+          )
+        : AbsorbPointer(
+            absorbing: busy,
+            child: RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                children: [
+                  if (busy) const LinearProgressIndicator(),
+                  const Text(
+                    'Lịch uống của bạn',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Ghi nhận từng lần uống, đối chiếu lượng thuốc và theo dõi lịch đã nhập.',
+                  ),
+                  const SizedBox(height: 16),
+                  if (medications.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 48),
+                      child: Text(
+                        'Chưa có thuốc. Nhấn Thêm thuốc để bắt đầu.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ...medications.map(_card),
+                ],
+              ),
             ),
-    );
-  }
+          ),
+    floatingActionButton: repo == null || loading || error != null
+        ? null
+        : FloatingActionButton.extended(
+            onPressed: busy ? null : () => _form(),
+            icon: const Icon(Icons.add),
+            label: const Text('Thêm thuốc'),
+          ),
+  );
 }

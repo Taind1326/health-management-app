@@ -1,3 +1,5 @@
+import 'medication_style.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../models/medication.dart';
@@ -25,6 +27,7 @@ class _MedicationFormScreenState extends State<MedicationFormScreen> {
   late final TextEditingController _dosageController;
   late final TextEditingController _noteController;
 
+  final _stockController = TextEditingController();
   String? _selectedUnit;
 
   bool get _isEditing => widget.medication != null;
@@ -47,6 +50,7 @@ class _MedicationFormScreenState extends State<MedicationFormScreen> {
 
   @override
   void dispose() {
+    _stockController.dispose();
     _nameController.dispose();
     _dosageController.dispose();
     _noteController.dispose();
@@ -95,6 +99,13 @@ class _MedicationFormScreenState extends State<MedicationFormScreen> {
       dosage: _dosageController.text.trim().replaceAll(',', '.'),
       unit: _selectedUnit!,
       note: _noteController.text.trim(),
+      stockAmount:
+          widget.medication?.stockAmount ??
+          (_stockController.text.trim().isEmpty
+              ? null
+              : double.parse(
+                  _stockController.text.trim().replaceAll(',', '.'),
+                )),
     );
 
     Navigator.pop(context, medication);
@@ -102,7 +113,7 @@ class _MedicationFormScreenState extends State<MedicationFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MedicationScaffold(
       appBar: AppBar(title: Text(_isEditing ? 'Sửa thuốc' : 'Thêm thuốc')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -111,6 +122,26 @@ class _MedicationFormScreenState extends State<MedicationFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (!_isEditing) ...[
+                TextFormField(
+                  controller: _stockController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Lượng thuốc hiện có (tùy chọn)',
+                    helperText: 'Cùng đơn vị với liều dùng. Bỏ trống nếu không theo dõi.',
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return null;
+                    final n = double.tryParse(v.trim().replaceAll(',', '.'));
+                    return n == null || !n.isFinite || n < 0
+                        ? 'Nhập số hữu hạn không âm.'
+                        : null;
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(

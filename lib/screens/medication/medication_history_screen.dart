@@ -1,263 +1,189 @@
 import 'package:flutter/material.dart';
 
 import '../../models/medication.dart';
-import '../../models/medication_log.dart';
 import '../../models/medication_schedule.dart';
+import '../../repositories/medication_repository.dart';
+import '../../services/medication_rules.dart';
+import 'medication_style.dart';
 
 class MedicationHistoryScreen extends StatefulWidget {
-  final List<Medication> medications;
-  final List<MedicationSchedule> schedules;
-  final List<MedicationLog> logs;
-  final ValueChanged<MedicationLog> onLogChanged;
-
-  const MedicationHistoryScreen({
-    super.key,
-    required this.medications,
-    required this.schedules,
-    required this.logs,
-    required this.onLogChanged,
-  });
-
+  final int userId;
+  const MedicationHistoryScreen({super.key, required this.userId});
   @override
   State<MedicationHistoryScreen> createState() =>
       _MedicationHistoryScreenState();
 }
 
 class _MedicationHistoryScreenState extends State<MedicationHistoryScreen> {
-  late final List<MedicationLog> _logs;
-
+  late final repo = MedicationRepository(widget.userId);
+  List<Medication> medications = [];
+  List<MedicationSchedule> schedules = [];
+  List<Map<String, Object?>> logs = [];
+  bool loading = true, busy = false;
+  String? error;
   @override
   void initState() {
     super.initState();
-    _logs = List.of(widget.logs);
+    _load();
   }
 
-  String _formatDateTime(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final hour = date.hour.toString().padLeft(2, '0');
-    final minute = date.minute.toString().padLeft(2, '0');
-
-    return '$day/$month/${date.year} $hour:$minute';
-  }
-
-  String _statusLabel(MedicationStatus status) {
-    switch (status) {
-      case MedicationStatus.pending:
-        return 'Chưa xác nhận';
-      case MedicationStatus.taken:
-        return 'Đã uống';
-      case MedicationStatus.skipped:
-        return 'Bỏ qua';
+  Future<void> _load() async {
+    try {
+      final m = await repo.medications();
+      final s = await repo.schedules();
+      final l = await repo.logs();
+      if (mounted)
+        setState(() {
+          medications = m;
+          schedules = s;
+          logs = l;
+          loading = false;
+          error = null;
+        });
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          error = medError(e);
+          loading = false;
+        });
     }
   }
 
-  Medication? _findMedication(String scheduleId) {
-    for (final schedule in widget.schedules) {
-      if (schedule.id == scheduleId) {
-        for (final medication in widget.medications) {
-          if (medication.id == schedule.medicationId) {
-            return medication;
-          }
-        }
-      }
+  MedicationSchedule? _schedule(String? id) {
+    for (final s in schedules) {
+      if (s.id == id) return s;
     }
     return null;
   }
 
-  List<MedicationLog> _todayEntries() {
-    final today = DateUtils.dateOnly(DateTime.now());
-    final entries = <MedicationLog>[];
-
-    for (final schedule in widget.schedules) {
-      if (!schedule.isEnabled) continue;
-
-      final start = DateUtils.dateOnly(schedule.startDate);
-      final end = schedule.endDate == null
-          ? null
-          : DateUtils.dateOnly(schedule.endDate!);
-
-      if (today.isBefore(start)) continue;
-      if (end != null && today.isAfter(end)) continue;
-
-      switch (schedule.repeat) {
-        case MedicationRepeat.once:
-          if (!DateUtils.isSameDay(today, start)) continue;
-          break;
-        case MedicationRepeat.daily:
-          break;
-        case MedicationRepeat.selectedWeekdays:
-          if (!schedule.weekdays.contains(today.weekday)) continue;
-          break;
-      }
-
-      final scheduledAt = DateTime(
-        today.year,
-        today.month,
-        today.day,
-        schedule.hour,
-        schedule.minute,
-      );
-
-      final id = '${schedule.id}-${scheduledAt.millisecondsSinceEpoch}';
-
-      final existingIndex = _logs.indexWhere((log) => log.id == id);
-
-      entries.add(
-        existingIndex == -1
-            ? MedicationLog(
-                id: id,
-                scheduleId: schedule.id,
-                scheduledAt: scheduledAt,
-              )
-            : _logs[existingIndex],
-      );
-    }
-
-    entries.sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
-
-    return entries;
-  }
-
-  Future<void> _recordStatus(
-    MedicationLog entry,
-    MedicationStatus status,
+  Future<void> _record(
+    MedicationSchedule s,
+    DateTime when,
+    String status,
   ) async {
-    final medication = _findMedication(entry.scheduleId);
-    final name = medication?.name ?? 'Thuốc';
-
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showMedicationDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          status == MedicationStatus.taken
-              ? 'Xác nhận đã uống'
-              : 'Xác nhận bỏ qua',
-        ),
-        content: Text(
-          '$name\n'
-          'Lịch: ${_formatDateTime(entry.scheduledAt)}\n\n'
-          'Ghi nhận trạng thái "${_statusLabel(status)}"?',
+      builder: (ctx) => AlertDialog(
+        title: Text(status == 'taken' ? 'Xác nhận đã uống' : 'Xác nhận bỏ qua'),
+        content: const Text(
+          'Kết quả và lượng thuốc sẽ được cập nhật cùng nhau. Nếu sửa kết quả cũ, lượng đã trừ sẽ được điều chỉnh tương ứng.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Hủy'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
+            onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Xác nhận'),
           ),
         ],
       ),
     );
-
-    if (!mounted || confirmed != true) return;
-
-    final updated = MedicationLog(
-      id: entry.id,
-      scheduleId: entry.scheduleId,
-      scheduledAt: entry.scheduledAt,
-      takenAt: status == MedicationStatus.taken ? DateTime.now() : null,
-      status: status,
-      // Giữ thông tin minh họa nếu thuốc/lịch bị xóa sau này.
-      note: medication == null
-          ? entry.note
-          : '${medication.name} — '
-                '${medication.dosage} ${medication.unit}',
-    );
-
-    setState(() {
-      final index = _logs.indexWhere((log) => log.id == updated.id);
-
-      if (index == -1) {
-        _logs.add(updated);
-      } else {
-        _logs[index] = updated;
-      }
-    });
-
-    widget.onLogChanged(updated);
+    if (!mounted || confirmed != true || busy) return;
+    setState(() => busy = true);
+    try {
+      await repo.record(s, when, status);
+      await _load();
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(medError(e))));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
-  Widget _buildEntry(MedicationLog entry, {required bool allowActions}) {
-    final medication = _findMedication(entry.scheduleId);
-    final title = entry.note.isNotEmpty
-        ? entry.note
-        : medication?.name ?? 'Thuốc không còn trong danh sách';
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+  Widget _entry({
+    required String name,
+    required DateTime when,
+    required String status,
+    MedicationSchedule? schedule,
+    String? unit,
+    double? dose,
+  }) {
+    final due = !when.isAfter(DateTime.now());
+    return MedicationGlassCard(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Text('Dự kiến: ${_formatDateTime(entry.scheduledAt)}'),
-            const SizedBox(height: 4),
-            Text('Trạng thái: ${_statusLabel(entry.status)}'),
-            if (entry.takenAt != null) ...[
-              const SizedBox(height: 4),
-              Text('Xác nhận uống: ${_formatDateTime(entry.takenAt!)}'),
-            ],
-            if (allowActions && entry.status == MedicationStatus.pending) ...[
-              const SizedBox(height: 12),
+            Text(
+              name,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            if (dose != null) Text('${medNumber(dose)} ${unit ?? ''}'),
+            Text('Dự kiến: ${medTime(when)}'),
+            Text(
+              status == 'taken'
+                  ? 'Đã uống'
+                  : status == 'skipped'
+                  ? 'Đã bỏ qua'
+                  : due
+                  ? 'Đến hạn, chưa xác nhận'
+                  : 'Sắp đến giờ',
+            ),
+            if (schedule != null && due)
               Wrap(
                 spacing: 8,
-                runSpacing: 8,
                 children: [
-                  FilledButton.icon(
-                    onPressed: () =>
-                        _recordStatus(entry, MedicationStatus.taken),
-                    icon: const Icon(Icons.check),
-                    label: const Text('Đã uống'),
+                  TextButton(
+                    onPressed: busy || status == 'taken'
+                        ? null
+                        : () => _record(schedule, when, 'taken'),
+                    child: Text(
+                      status == 'skipped' ? 'Sửa thành đã uống' : 'Đã uống',
+                    ),
                   ),
-                  OutlinedButton(
-                    onPressed: () =>
-                        _recordStatus(entry, MedicationStatus.skipped),
-                    child: const Text('Bỏ qua'),
+                  TextButton(
+                    onPressed: busy || status == 'skipped'
+                        ? null
+                        : () => _record(schedule, when, 'skipped'),
+                    child: Text(
+                      status == 'taken' ? 'Sửa thành bỏ qua' : 'Bỏ qua',
+                    ),
                   ),
                 ],
               ),
-            ],
+            if (schedule == null)
+              const Text('Lịch đã xóa; giữ nguyên lịch sử đã ghi nhận.'),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildList(
-    List<MedicationLog> entries, {
-    required bool allowActions,
-    required String emptyMessage,
-  }) {
-    if (entries.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(emptyMessage, textAlign: TextAlign.center),
-        ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: entries
-          .map((entry) => _buildEntry(entry, allowActions: allowActions))
-          .toList(),
+  Widget _todayEntry(MedicationSchedule schedule, DateTime when) {
+    final med = medications.firstWhere((m) => m.id == schedule.medicationId);
+    final matches = logs.where(
+      (l) =>
+          l['schedule_id'] == schedule.id &&
+          l['scheduled_at'] == when.toIso8601String(),
+    );
+    final log = matches.isEmpty ? null : matches.first;
+    return _entry(
+      name: log?['medication_name'] as String? ?? med.name,
+      when: when,
+      status: log?['status'] as String? ?? 'pending',
+      schedule: schedule,
+      unit: log?['unit'] as String? ?? med.unit,
+      dose: (log?['dosage'] as num?)?.toDouble() ?? double.parse(med.dosage),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final history = List<MedicationLog>.of(_logs)
-      ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
-
+    final now = DateTime.now();
+    final today = <({MedicationSchedule s, DateTime at})>[];
+    for (final s in schedules.where((s) => s.isEnabled)) {
+      if (MedicationRules.occursOn(s, now))
+        today.add((s: s, at: MedicationRules.at(s, now)));
+    }
+    today.sort((a, b) => a.at.compareTo(b.at));
     return DefaultTabController(
       length: 2,
-      child: Scaffold(
+      child: MedicationScaffold(
         appBar: AppBar(
           title: const Text('Theo dõi uống thuốc'),
           bottom: const TabBar(
@@ -267,20 +193,55 @@ class _MedicationHistoryScreenState extends State<MedicationHistoryScreen> {
             ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _buildList(
-              _todayEntries(),
-              allowActions: true,
-              emptyMessage: 'Hôm nay chưa có lịch uống thuốc.',
-            ),
-            _buildList(
-              history,
-              allowActions: false,
-              emptyMessage: 'Chưa có lần uống nào được ghi nhận.',
-            ),
-          ],
-        ),
+        body: loading
+            ? const Center(child: CircularProgressIndicator())
+            : error != null
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(error!),
+                    TextButton(onPressed: _load, child: const Text('Tải lại')),
+                  ],
+                ),
+              )
+            : TabBarView(
+                children: [
+                  ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      Text(
+                        'Đã uống hôm nay: ${today.where((e) => logs.any((l) => l['schedule_id'] == e.s.id && l['scheduled_at'] == e.at.toIso8601String() && l['status'] == 'taken')).length}/${today.length} lần theo lịch đang bật',
+                      ),
+                      TextButton.icon(
+                        onPressed: busy ? null : _load,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Cập nhật'),
+                      ),
+                      if (busy) const LinearProgressIndicator(),
+                      if (today.isEmpty)
+                        const Text('Hôm nay chưa có lịch đang bật.'),
+                      for (final entry in today) _todayEntry(entry.s, entry.at),
+                    ],
+                  ),
+                  ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      if (logs.isEmpty)
+                        const Text('Chưa có kết quả uống thuốc.'),
+                      for (final log in logs)
+                        _entry(
+                          name: log['medication_name'] as String,
+                          when: DateTime.parse(log['scheduled_at'] as String),
+                          status: log['status'] as String,
+                          schedule: _schedule(log['schedule_id'] as String?),
+                          unit: log['unit'] as String,
+                          dose: (log['dosage'] as num).toDouble(),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
       ),
     );
   }

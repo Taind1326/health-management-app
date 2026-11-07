@@ -1,3 +1,5 @@
+import 'medication_style.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../models/medication.dart';
@@ -60,7 +62,11 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
   }
 
   Future<void> _pickTime() async {
-    final selected = await showTimePicker(context: context, initialTime: _time);
+    final selected = await showTimePicker(
+      context: context,
+      initialTime: _time,
+      builder: (ctx, child) => Theme(data: medicationTheme(), child: child!),
+    );
 
     if (!mounted || selected == null) return;
 
@@ -71,6 +77,7 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
     final today = DateUtils.dateOnly(DateTime.now());
     final selected = await showDatePicker(
       context: context,
+      builder: (ctx, child) => Theme(data: medicationTheme(), child: child!),
       initialDate: _startDate.isBefore(today) ? today : _startDate,
       firstDate: today,
       lastDate: DateTime(today.year + 5, 12, 31),
@@ -90,6 +97,7 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
   Future<void> _pickEndDate() async {
     final selected = await showDatePicker(
       context: context,
+      builder: (ctx, child) => Theme(data: medicationTheme(), child: child!),
       initialDate: _endDate ?? _startDate,
       firstDate: _startDate,
       lastDate: DateTime(_startDate.year + 5, 12, 31),
@@ -270,14 +278,18 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MedicationScaffold(
       appBar: AppBar(title: const Text('Lịch uống thuốc')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Text(
             widget.medication.name,
-            style: Theme.of(context).textTheme.titleLarge,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -285,7 +297,14 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
             '${widget.medication.unit}',
           ),
           const SizedBox(height: 24),
-          Text('Tạo lịch uống', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Tạo lịch uống',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: _pickTime,
@@ -376,12 +395,16 @@ class _MedicationScheduleScreenState extends State<MedicationScheduleScreen> {
           const SizedBox(height: 24),
           Text(
             'Danh sách lịch (${_schedules.length})',
-            style: Theme.of(context).textTheme.titleMedium,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 12),
           if (_schedules.isEmpty) const Text('Thuốc này chưa có lịch uống.'),
           ..._schedules.map(
-            (schedule) => Card(
+            (schedule) => MedicationGlassCard(
               child: ListTile(
                 leading: const Icon(Icons.schedule),
                 title: Text(_formatTime(schedule.hour, schedule.minute)),

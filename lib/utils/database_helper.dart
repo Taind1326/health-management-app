@@ -5,13 +5,17 @@ import 'package:sqflite/sqflite.dart';
 /// Đặt tại lib/utils/database_helper.dart.
 /// Không chứa dữ liệu mẫu hoặc logic riêng của từng module.
 class DatabaseHelper {
-  DatabaseHelper._internal();
+  DatabaseHelper._internal() : _databasePath = null;
+
+  /// Chỉ dùng cho test với file riêng, không mở database người dùng.
+  DatabaseHelper.forTesting(String path) : _databasePath = path;
+  final String? _databasePath;
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   factory DatabaseHelper() => _instance;
   static DatabaseHelper get instance => _instance;
 
   static const databaseName = 'health_app.db';
-  static const databaseVersion = 1;
+  static const databaseVersion = 2;
 
   // Dùng chung Future để các module mở đồng thời vẫn chỉ khởi tạo một lần.
   Future<Database>? _opening;
@@ -20,9 +24,10 @@ class DatabaseHelper {
 
   Future<Database> _openDatabase() async {
     try {
-      final directory = await getDatabasesPath();
+      final path =
+          _databasePath ?? p.join(await getDatabasesPath(), databaseName);
       return await openDatabase(
-        p.join(directory, databaseName),
+        path,
         version: databaseVersion,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
@@ -48,9 +53,32 @@ class DatabaseHelper {
   ) async {
     // Khi tăng databaseVersion, thêm migration ở đây.
     // Không DROP TABLE và tạo lại vì sẽ làm mất dữ liệu người dùng.
-    throw UnsupportedError(
-      'Chưa có migration từ version $oldVersion lên $newVersion.',
-    );
+    if (oldVersion < 2) {
+      // Bản v1 của nhóm có hai biến thể: có hoặc chưa có cột email.
+      final columns = await db.rawQuery('PRAGMA table_info(users)');
+      if (!columns.any((row) => row['name'] == 'email')) {
+        await db.execute(
+          'ALTER TABLE users ADD COLUMN email TEXT COLLATE NOCASE',
+        );
+      }
+      await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE)',
+      );
+      await db.execute(
+        'ALTER TABLE medications ADD COLUMN stock_amount REAL CHECK(stock_amount IS NULL OR stock_amount >= 0)',
+      );
+      await db.execute(
+        'ALTER TABLE medication_logs ADD COLUMN medication_id TEXT REFERENCES medications(id) ON DELETE SET NULL',
+      );
+      await db.execute(
+        'ALTER TABLE medication_logs ADD COLUMN stock_deducted REAL NOT NULL DEFAULT 0 CHECK(stock_deducted >= 0)',
+      );
+      await db.execute(
+        'UPDATE medication_logs SET medication_id = (SELECT medication_id FROM medication_schedules WHERE medication_schedules.id = medication_logs.schedule_id)',
+      );
+      await db.execute(_stockTable);
+      await db.execute(_stockIndex);
+    }
   }
 
   /// Gọi trong CÙNG transaction tạo tài khoản và hồ sơ.
@@ -189,7 +217,8 @@ class DatabaseHelper {
       name TEXT NOT NULL CHECK(length(trim(name)) > 0),
       dosage REAL NOT NULL CHECK(dosage > 0),
       unit TEXT NOT NULL CHECK(unit IN ('viên','ml','gói','giọt','nhát xịt')),
-      note TEXT NOT NULL DEFAULT ''
+      note TEXT NOT NULL DEFAULT '',
+      stock_amount REAL CHECK(stock_amount IS NULL OR stock_amount >= 0)
     )''',
     '''CREATE TABLE medication_schedules (
       id TEXT NOT NULL PRIMARY KEY,
@@ -214,6 +243,8 @@ class DatabaseHelper {
       dosage REAL NOT NULL CHECK(dosage > 0),
       unit TEXT NOT NULL,
       note TEXT NOT NULL DEFAULT '',
+      medication_id TEXT REFERENCES medications(id) ON DELETE SET NULL,
+      stock_deducted REAL NOT NULL DEFAULT 0 CHECK(stock_deducted >= 0),
       UNIQUE(schedule_id, scheduled_at),
       CHECK((status = 'taken' AND taken_at IS NOT NULL)
         OR (status = 'skipped' AND taken_at IS NULL))
@@ -244,6 +275,8 @@ class DatabaseHelper {
       diet_mode TEXT NOT NULL DEFAULT 'balanced' CHECK(diet_mode IN
         ('balanced','weight_loss','muscle_gain','vegetarian'))
     )''',
+    _stockTable,
+    _stockIndex,
     'CREATE INDEX idx_goals_user ON health_goals(user_id)',
     'CREATE INDEX idx_metrics_user_type_time ON health_metrics(user_id, metric_type, recorded_at)',
     'CREATE INDEX idx_activities_user_time ON activities(user_id, recorded_at)',
@@ -258,4 +291,16 @@ class DatabaseHelper {
     'CREATE INDEX idx_reminders_user ON reminders(user_id)',
     'CREATE INDEX idx_reminders_schedule ON reminders(medication_schedule_id)',
   ];
+  static const _stockTable = '''CREATE TABLE medication_stock_movements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    medication_id TEXT NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    log_id TEXT REFERENCES medication_logs(id) ON DELETE SET NULL,
+    delta REAL NOT NULL,
+    balance_after REAL NOT NULL CHECK(balance_after >= 0),
+    reason TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
+  )''';
+  static const _stockIndex =
+      'CREATE INDEX idx_stock_medication_time ON medication_stock_movements(medication_id, recorded_at)';
 }
