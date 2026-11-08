@@ -3,6 +3,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../models/activity.dart';
+import '../../services/auth_service.dart';
+import '../../widgets/aurora_page.dart';
+import '../../widgets/tv1_glass_widgets.dart';
 import 'package:health_app/services/calorie_calculator.dart';
 import 'package:health_app/services/google_maps_service.dart';
 
@@ -83,7 +86,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
   String? _routeError;
   WalkingRoute? _route;
 
-  String _type = Activity.types.first;
+  String _type = Activity.types.first; // 'walking'
   DateTime _date = DateTime.now();
 
   @override
@@ -107,18 +110,18 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
 
   /// Loại hoạt động tính tự động từ tuyến đường (chọn điểm đi/đến).
   bool get _isRouteType =>
-      _type == 'Đi bộ' || _type == 'Chạy bộ' || _type == 'Đạp xe';
+      _type == 'walking' || _type == 'running' || _type == 'cycling';
 
   /// Đạp xe không có số bước: ẩn ô này, lưu 0.
-  bool get _showSteps => _type != 'Đạp xe';
+  bool get _showSteps => _type != 'cycling';
 
   /// Đi bộ và chạy bộ dùng chung đường đi; đạp xe dùng profile riêng.
   String get _routeProfile =>
-      _type == 'Đạp xe' ? 'cycling-regular' : 'foot-walking';
+      _type == 'cycling' ? 'cycling-regular' : 'foot-walking';
 
   String get _routeVerb => switch (_type) {
-        'Chạy bộ' => 'chạy bộ',
-        'Đạp xe' => 'đạp xe',
+        'running' => 'chạy bộ',
+        'cycling' => 'đạp xe',
         _ => 'đi bộ',
       };
 
@@ -127,7 +130,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     WalkingRoute route,
     double weightKg,
   ) {
-    if (_type == 'Chạy bộ') {
+    if (_type == 'running') {
       final minutes =
           math.max(1, (route.distanceKm / _runningSpeedKmh * 60).ceil());
       return (
@@ -140,7 +143,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
         ),
       );
     }
-    if (_type == 'Đạp xe') {
+    if (_type == 'cycling') {
       return (
         steps: 0,
         minutes: route.durationMinutes,
@@ -181,6 +184,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
+      builder: auroraPickerBuilder,
       initialDate: _date,
       firstDate: DateTime(now.year - 1),
       lastDate: now,
@@ -195,6 +199,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
   Future<void> _pickTime() async {
     final picked = await showTimePicker(
       context: context,
+      builder: auroraPickerBuilder,
       initialTime: TimeOfDay.fromDateTime(_date),
     );
     if (!mounted || picked == null) return;
@@ -212,6 +217,13 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
   }
 
   void _save() {
+    final userId = AuthService().currentUser?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để lưu hoạt động.')),
+      );
+      return;
+    }
     if (_isRouteType && !_routeCalculated) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -230,16 +242,15 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     Navigator.pop(
       context,
       Activity(
-        userId: 1, // đợt 2: lấy từ người dùng đang đăng nhập (TV1)
+        userId: userId,
         type: _type,
         date: _date,
-        steps: int.parse(_stepsCtrl.text.trim()),
+        steps: _showSteps ? int.parse(_stepsCtrl.text.trim()) : 0,
         distanceKm: parseDistance(_distanceCtrl.text)!,
         durationMinutes: int.parse(_durationCtrl.text.trim()),
         calories: int.parse(_caloriesCtrl.text.trim()),
         origin: _isRouteType ? _originCtrl.text.trim() : null,
-        destination:
-          _isRouteType ? _destinationCtrl.text.trim() : null,
+        destination: _isRouteType ? _destinationCtrl.text.trim() : null,
       ),
     );
   }
@@ -285,7 +296,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     if (weightKg == null) {
       setState(() {
         _routeError = 'Chưa có cân nặng để tính calo. '
-            'Hãy cập nhật cân nặng trong hồ sơ hoặc chỉ số sức khỏe.';
+            'Hãy cập nhật cân nặng trong hồ sơ hoặc thêm chỉ số cân nặng.';
       });
       return;
     }
@@ -297,7 +308,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     });
 
     try {
-      final route = _type == 'Đạp xe'
+      final route = _type == 'cycling'
           ? await _mapsService.calculateCyclingRoute(
               origin: origin,
               destination: destination,
@@ -328,8 +339,8 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Thêm hoạt động')),
+    return AuroraPage(
+      title: 'Thêm hoạt động',
       body: Form(
         key: _formKey,
         child: ListView(
@@ -339,13 +350,18 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
               initialValue: _type,
               decoration: const InputDecoration(labelText: 'Loại hoạt động'),
               items: Activity.types
-                  .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                  .map((t) => DropdownMenuItem(
+                        value: t,
+                        child: Text(Activity.labelOf(t)),
+                      ))
                   .toList(),
               onChanged: (value) {
                 if (value == null) return;
 
                 final keepRoute = _isRouteType &&
-                    (value == 'Đi bộ' || value == 'Chạy bộ' || value == 'Đạp xe');
+                    (value == 'walking' ||
+                        value == 'running' ||
+                        value == 'cycling');
                 final oldRoute = _route;
                 final oldProfile = _routeProfile;
 
@@ -456,30 +472,28 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
 
               if (_route != null) ...[
                 const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Từ: ${_route!.origin.label}'),
-                        const SizedBox(height: 4),
-                        Text('Đến: ${_route!.destination.label}'),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${_route!.distanceKm.toStringAsFixed(2)} km · '
-                          '${_showSteps ? '~${_stepsCtrl.text} bước · ' : ''}'
-                          '~${_durationCtrl.text} phút · '
-                          '~${_caloriesCtrl.text} kcal',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Nếu địa điểm hiển thị sai, hãy nhập rõ hơn '
-                          '(kèm quận/thành phố), ứng dụng sẽ tự tính lại.',
-                        ),
-                      ],
-                    ),
+                Tv1GlassCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Từ: ${_route!.origin.label}'),
+                      const SizedBox(height: 4),
+                      Text('Đến: ${_route!.destination.label}'),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${_route!.distanceKm.toStringAsFixed(2)} km · '
+                        '${_showSteps ? '~${_stepsCtrl.text} bước · ' : ''}'
+                        '~${_durationCtrl.text} phút · '
+                        '~${_caloriesCtrl.text} kcal',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Nếu địa điểm hiển thị sai, hãy nhập rõ hơn '
+                        '(kèm quận/thành phố), ứng dụng sẽ tự tính lại.',
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -487,17 +501,17 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
               const SizedBox(height: 8),
 
               Text(
-                _type == 'Đạp xe'
+                _type == 'cycling'
                     ? 'Quãng đường và thời gian lấy từ tuyến đường đạp xe; '
                         'calo được ước lượng theo tốc độ trung bình của tuyến '
-                        'và cân nặng trong hồ sơ, không phải số đo thực tế.'
-                    : _type == 'Chạy bộ'
+                        'và cân nặng mới nhất của bạn, không phải số đo thực tế.'
+                    : _type == 'running'
                     ? 'Quãng đường lấy từ tuyến đường; thời gian, số bước và calo '
                         'được ước lượng với tốc độ chạy giả định '
                         '${_runningSpeedKmh.toStringAsFixed(0)} km/h và cân nặng '
-                        'trong hồ sơ, không phải số đo thực tế.'
+                        'mới nhất của bạn, không phải số đo thực tế.'
                     : 'Số bước và calo được ước lượng từ tuyến đi bộ và cân nặng '
-                        'trong hồ sơ, không phải số đo thực tế.',
+                        'mới nhất của bạn, không phải số đo thực tế.',
               ),
             ],
             const SizedBox(height: 12),
