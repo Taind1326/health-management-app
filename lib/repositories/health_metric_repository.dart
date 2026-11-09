@@ -31,6 +31,16 @@ class HealthMetricRepository extends ChangeNotifier {
     return filtered.first;
   }
 
+    /// Chỉ số mới nhất của một tài khoản cụ thể (không lẫn dữ liệu người khác).
+  HealthMetric? getLatestForUser(int userId, String type) {
+    final filtered = _metrics
+        .where((m) => m.userId == userId && m.metricType == type)
+        .toList();
+    if (filtered.isEmpty) return null;
+    filtered.sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
+    return filtered.first;
+  }
+
   /// Adds a new health metric and notifies all listening screens.
   void add(HealthMetric metric) {
     _metrics.add(metric);

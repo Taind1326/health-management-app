@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/health_metric.dart';
 import '../../repositories/health_metric_repository.dart';
+import '../../services/auth_service.dart';
 
 /// Screen for adding a new health metric record.
 /// Handles numeric parsing (supporting commas), range checks, future date prevention,
@@ -137,9 +138,17 @@ class _AddMetricScreenState extends State<AddMetricScreen> {
     }
 
     // Tạo bản ghi HealthMetric và đưa vào nguồn dữ liệu dùng chung
+    final currentUserId = AuthService().currentUser?.id;
+    if (currentUserId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để lưu chỉ số.')),
+      );
+      return;
+    }
+    
     final newMetric = HealthMetric(
       id: DateTime.now().millisecondsSinceEpoch,
-      userId: 1,
+      userId: currentUserId,
       metricType: _selectedType,
       value: primaryValue,
       value2: secondaryValue,

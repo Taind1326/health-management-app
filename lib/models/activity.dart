@@ -1,15 +1,21 @@
 /// Một lần ghi nhận hoạt động thể chất của người dùng.
+/// `type` lưu bằng mã (walking/running/cycling/other), hiển thị bằng [typeLabel].
 class Activity {
-  static const List<String> types = [
-    'Đi bộ',
-    'Chạy bộ',
-    'Đạp xe',
-    'Khác',
-  ];
+  static const List<String> types = ['walking', 'running', 'cycling', 'other'];
 
-  final int? id; // null khi chưa lưu vào SQLite (đợt 2)
+  static const Map<String, String> typeLabels = {
+    'walking': 'Đi bộ',
+    'running': 'Chạy bộ',
+    'cycling': 'Đạp xe',
+    'other': 'Khác',
+  };
+
+  static String labelOf(String type) =>
+      typeLabels[type] ?? typeLabels['other']!;
+
+  final int? id; // null khi chưa lưu vào SQLite
   final int userId;
-  final String type;
+  final String type; // mã loại hoạt động
   final DateTime date;
   final int steps;
   final double distanceKm;
@@ -31,15 +37,17 @@ class Activity {
     required this.destination,
   });
 
+  String get typeLabel => labelOf(type);
+
   /// Hoạt động có diễn ra trong ngày [day] không.
   bool isOn(DateTime day) =>
       date.year == day.year && date.month == day.month && date.day == day.day;
 
   Map<String, dynamic> toMap() => {
-        'id': id,
+        if (id != null) 'id': id,
         'user_id': userId,
         'type': type,
-        'date': date.toIso8601String(),
+        'recorded_at': date.toIso8601String(),
         'steps': steps,
         'distance_km': distanceKm,
         'duration_minutes': durationMinutes,
@@ -48,16 +56,19 @@ class Activity {
         'destination': destination,
       };
 
-  factory Activity.fromMap(Map<String, dynamic> map) => Activity(
-        id: map['id'] as int?,
-        userId: map['user_id'] as int,
-        type: map['type'] as String,
-        date: DateTime.parse(map['date'] as String),
-        steps: map['steps'] as int,
-        distanceKm: (map['distance_km'] as num).toDouble(),
-        durationMinutes: map['duration_minutes'] as int,
-        calories: map['calories'] as int,
-        origin: map['origin'] as String?,
-        destination: map['destination'] as String?,
-      );
+  factory Activity.fromMap(Map<String, dynamic> map) {
+    final rawType = map['type'] as String? ?? 'other';
+    return Activity(
+      id: map['id'] as int?,
+      userId: map['user_id'] as int,
+      type: types.contains(rawType) ? rawType : 'other',
+      date: DateTime.parse(map['recorded_at'] as String),
+      steps: (map['steps'] as num).toInt(),
+      distanceKm: (map['distance_km'] as num).toDouble(),
+      durationMinutes: (map['duration_minutes'] as num).toInt(),
+      calories: (map['calories'] as num).toInt(),
+      origin: map['origin'] as String?,
+      destination: map['destination'] as String?,
+    );
+  }
 }

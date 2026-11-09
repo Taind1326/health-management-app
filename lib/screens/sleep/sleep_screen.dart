@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../models/sleep_record.dart';
+import '../../repositories/sleep_repository.dart';
+import '../../repositories/user_settings_repository.dart';
+import '../../services/auth_service.dart';
+import '../../widgets/aurora_page.dart';
+import '../../widgets/tv1_glass_widgets.dart';
 import 'sleep_history_screen.dart';
-import 'sleep_sample_data.dart';
 
 /// Màn hình theo dõi giấc ngủ: đêm gần nhất, mục tiêu, ghi nhận giấc ngủ mới.
 class SleepScreen extends StatefulWidget {
@@ -13,9 +17,50 @@ class SleepScreen extends StatefulWidget {
 }
 
 class _SleepScreenState extends State<SleepScreen> {
-  // Prototype đợt 1: dữ liệu giữ trong bộ nhớ.
-  final List<SleepRecord> _records = buildSampleSleepRecords();
+  SleepRepository? _sleepRepo;
+  UserSettingsRepository? _settingsRepo;
+
+  List<SleepRecord> _records = [];
+  bool _loading = true;
+  String? _error;
   int _goalMinutes = 8 * 60;
+
+  @override
+  void initState() {
+    super.initState();
+    final userId = AuthService().currentUser?.id;
+    if (userId == null) {
+      _loading = false;
+      _error = 'Vui lòng đăng nhập để xem dữ liệu giấc ngủ.';
+      return;
+    }
+    _sleepRepo = SleepRepository(userId);
+    _settingsRepo = UserSettingsRepository(userId);
+    _load();
+  }
+
+  Future<void> _load() async {
+    final sleepRepo = _sleepRepo;
+    final settingsRepo = _settingsRepo;
+    if (sleepRepo == null || settingsRepo == null) return;
+    try {
+      final records = await sleepRepo.getAll();
+      final settings = await settingsRepo.get();
+      if (!mounted) return;
+      setState(() {
+        _records = records;
+        _goalMinutes = settings.sleepGoalMinutes;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Không đọc được dữ liệu giấc ngủ: ${errorText(e)}';
+      });
+    }
+  }
 
   SleepRecord? get _latest {
     if (_records.isEmpty) return null;
@@ -28,23 +73,27 @@ class _SleepScreenState extends State<SleepScreen> {
   String _hm(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
-  void _openHistory() {
-    Navigator.push(
+  String _dmy(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  Future<void> _openHistory() async {
+    final repo = _sleepRepo;
+    if (repo == null) return;
+    await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SleepHistoryScreen(
-          records: List.of(_records),
-          goalMinutes: _goalMinutes,
-        ),
+        builder: (_) =>
+            SleepHistoryScreen(repository: repo, goalMinutes: _goalMinutes),
       ),
     );
+    if (mounted) _load();
   }
 
   Future<void> _editGoal() async {
     var hours = _goalMinutes / 60;
-    final saved = await showDialog<bool>(
+    final saved = await showAuroraDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
+      builder: (_) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           title: const Text('Mục tiêu giấc ngủ'),
           content: Column(
@@ -76,24 +125,39 @@ class _SleepScreenState extends State<SleepScreen> {
       ),
     );
     if (!mounted || saved != true) return;
-    setState(() => _goalMinutes = (hours * 60).round());
+    await _saveGoal((hours * 60).round());
   }
 
-  String _dmy(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  Future<void> _saveGoal(int minutes) async {
+    final repo = _settingsRepo;
+    if (repo == null) return;
+    try {
+      await repo.update(sleepGoalMinutes: minutes);
+      if (!mounted) return;
+      setState(() => _goalMinutes = minutes);
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(
+        context,
+        'Chưa lưu được mục tiêu: ${errorText(e)}',
+        onRetry: () => _saveGoal(minutes),
+      );
+    }
+  }
 
   Future<void> _addRecord() async {
-    final result = await showModalBottomSheet<SleepRecord>(
+    final repo = _sleepRepo;
+    if (repo == null) return;
+    final result = await showAuroraSheet<SleepRecord>(
       context: context,
-      isScrollControlled: true,
-      builder: (_) => const _AddSleepSheet(),
+      builder: (_) => _AddSleepSheet(userId: repo.userId),
     );
     if (!mounted || result == null) return;
 
     // Mỗi ngày thức dậy chỉ giữ một bản ghi: nếu đã có thì hỏi trước khi thay.
     final hasOld = _records.any((r) => r.isOn(result.wakeTime));
     if (hasOld) {
-      final replace = await showDialog<bool>(
+      final replace = await showAuroraDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Thay thế bản ghi cũ?'),
@@ -113,115 +177,161 @@ class _SleepScreenState extends State<SleepScreen> {
           ],
         ),
       );
-      // Chọn Hủy (hoặc đóng dialog): giữ nguyên bản ghi cũ.
       if (!mounted || replace != true) return;
     }
+    await _saveRecord(result);
+  }
 
-    setState(() {
-      _records.removeWhere((r) => r.isOn(result.wakeTime));
-      _records.add(result);
-    });
+  /// Chỉ cập nhật giao diện sau khi SQLite ghi thành công.
+  Future<void> _saveRecord(SleepRecord record) async {
+    final repo = _sleepRepo;
+    if (repo == null) return;
+    try {
+      await repo.save(record);
+      final list = await repo.getAll();
+      if (!mounted) return;
+      setState(() => _records = list);
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(
+        context,
+        'Chưa lưu được giấc ngủ: ${errorText(e)}',
+        onRetry: () => _saveRecord(record),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    return AuroraPage(
+      title: 'Giấc ngủ',
+      actions: [
+        IconButton(
+          tooltip: 'Lịch sử giấc ngủ',
+          icon: const Icon(Icons.history),
+          onPressed: _sleepRepo == null ? null : _openHistory,
+        ),
+      ],
+      floatingActionButton: _sleepRepo == null
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _addRecord,
+              icon: const Icon(Icons.bedtime_outlined),
+              label: const Text('Ghi nhận giấc ngủ'),
+            ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? AuroraErrorView(
+                  message: _error!,
+                  onRetry: _sleepRepo == null
+                      ? null
+                      : () {
+                          setState(() {
+                            _loading = true;
+                            _error = null;
+                          });
+                          _load();
+                        },
+                )
+              : _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final theme = Theme.of(context);
     final latest = _latest;
     final progress = latest == null
         ? 0.0
         : (latest.durationMinutes / _goalMinutes).clamp(0.0, 1.0);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Giấc ngủ'),
-        actions: [
-          IconButton(
-            tooltip: 'Lịch sử giấc ngủ',
-            icon: const Icon(Icons.history),
-            onPressed: _openHistory,
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+      children: [
+        if (latest == null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 48),
+            child: Center(
+              child: Text(
+                'Chưa có dữ liệu giấc ngủ.\nNhấn "Ghi nhận giấc ngủ" để thêm đêm đầu tiên.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          )
+        else ...[
+          Text('Đêm gần nhất', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Tv1GlassCard(
+            padding: const EdgeInsets.all(20),
+            child: SizedBox(
+              width: double.infinity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_duration(latest.durationMinutes),
+                      style: theme.textTheme.headlineMedium),
+                  const SizedBox(height: 12),
+                  LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 10,
+                    borderRadius: BorderRadius.circular(5),
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    valueColor: const AlwaysStoppedAnimation(Color(0xFF6EE7B7)),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    latest.durationMinutes >= _goalMinutes
+                        ? 'Đạt mục tiêu ${_duration(_goalMinutes)}'
+                        : 'Thiếu ${_duration(_goalMinutes - latest.durationMinutes)} so với mục tiêu',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addRecord,
-        icon: const Icon(Icons.bedtime_outlined),
-        label: const Text('Ghi nhận giấc ngủ'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-        children: [
-          if (latest == null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 48),
-              child: Center(
-                child: Text(
-                  'Chưa có dữ liệu giấc ngủ.\nNhấn "Ghi nhận giấc ngủ" để thêm đêm đầu tiên.',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium,
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _TimeTile(
+                  icon: Icons.bedtime_outlined,
+                  label: 'Đi ngủ',
+                  value: _hm(latest.sleepTime),
                 ),
               ),
-            )
-          else ...[
-            Text('Đêm gần nhất', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _TimeTile(
+                  icon: Icons.wb_sunny_outlined,
+                  label: 'Thức dậy',
+                  value: _hm(latest.wakeTime),
+                ),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 12),
+        Tv1GlassCard(
+          child: Row(
+            children: [
+              const Icon(Icons.flag_outlined),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_duration(latest.durationMinutes),
-                        style: theme.textTheme.headlineMedium),
-                    const SizedBox(height: 12),
-                    LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 10,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      latest.durationMinutes >= _goalMinutes
-                          ? 'Đạt mục tiêu ${_duration(_goalMinutes)}'
-                          : 'Thiếu ${_duration(_goalMinutes - latest.durationMinutes)} so với mục tiêu',
-                      style: theme.textTheme.bodyMedium,
-                    ),
+                    Text('Mục tiêu giấc ngủ', style: theme.textTheme.titleSmall),
+                    Text('${_duration(_goalMinutes)} mỗi đêm',
+                        style: theme.textTheme.bodySmall),
                   ],
                 ),
               ),
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: _TimeTile(
-                    icon: Icons.bedtime_outlined,
-                    label: 'Đi ngủ',
-                    value: _hm(latest.sleepTime),
-                  ),
-                ),
-                Expanded(
-                  child: _TimeTile(
-                    icon: Icons.wb_sunny_outlined,
-                    label: 'Thức dậy',
-                    value: _hm(latest.wakeTime),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.flag_outlined),
-              title: const Text('Mục tiêu giấc ngủ'),
-              subtitle: Text('${_duration(_goalMinutes)} mỗi đêm'),
-              trailing: TextButton(
-                onPressed: _editGoal,
-                child: const Text('Chỉnh sửa'),
-              ),
-            ),
+              TextButton(onPressed: _editGoal, child: const Text('Chỉnh sửa')),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -240,9 +350,10 @@ class _TimeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+    return Tv1GlassCard(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: SizedBox(
+        width: double.infinity,
         child: Column(
           children: [
             Icon(icon, color: theme.colorScheme.primary),
@@ -257,10 +368,12 @@ class _TimeTile extends StatelessWidget {
 }
 
 /// Bottom sheet nhập giấc ngủ: ngày thức dậy, giờ đi ngủ, giờ thức dậy.
-/// Nếu giờ ngủ không sớm hơn giờ thức thì hiểu là đi ngủ từ hôm trước của
-/// ngày thức dậy. Không cho lưu giấc ngủ chưa kết thúc (giờ thức ở tương lai).
+/// Nếu giờ ngủ không sớm hơn giờ thức thì hiểu là đi ngủ từ hôm trước.
+/// Không cho lưu giấc ngủ chưa kết thúc (giờ thức ở tương lai).
 class _AddSleepSheet extends StatefulWidget {
-  const _AddSleepSheet();
+  final int userId;
+
+  const _AddSleepSheet({required this.userId});
 
   @override
   State<_AddSleepSheet> createState() => _AddSleepSheetState();
@@ -287,6 +400,7 @@ class _AddSleepSheetState extends State<_AddSleepSheet> {
     final today = _today();
     final picked = await showDatePicker(
       context: context,
+      builder: auroraPickerBuilder,
       initialDate: _wakeDate,
       firstDate: DateTime(today.year - 1, today.month, today.day),
       lastDate: today,
@@ -301,6 +415,7 @@ class _AddSleepSheetState extends State<_AddSleepSheet> {
   Future<void> _pickTime(bool isSleep) async {
     final picked = await showTimePicker(
       context: context,
+      builder: auroraPickerBuilder,
       initialTime: isSleep ? _sleep : _wake,
     );
     if (!mounted || picked == null) return;
@@ -336,11 +451,7 @@ class _AddSleepSheetState extends State<_AddSleepSheet> {
     }
     Navigator.pop(
       context,
-      SleepRecord(
-        userId: 1, // đợt 2: lấy từ người dùng đang đăng nhập (TV1)
-        sleepTime: sleep,
-        wakeTime: wake,
-      ),
+      SleepRecord(userId: widget.userId, sleepTime: sleep, wakeTime: wake),
     );
   }
 
@@ -391,7 +502,8 @@ class _AddSleepSheetState extends State<_AddSleepSheet> {
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(_error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                style: const TextStyle(
+                    color: Color(0xFFFF6B6B), fontWeight: FontWeight.w600)),
           ],
           const SizedBox(height: 16),
           SizedBox(
