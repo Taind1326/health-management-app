@@ -1,44 +1,55 @@
 import 'package:flutter/material.dart';
+import '../../controllers/health_metric_controller.dart';
 import '../../models/health_metric.dart';
-import '../../repositories/health_metric_repository.dart';
+import '../../widgets/aurora_page.dart';
+import '../../widgets/tv1_glass_widgets.dart';
 
-/// Screen displaying interactive visual trend charts and detailed statistics.
-/// Includes a custom line chart with time axis, units, and systolic/diastolic separation for blood pressure.
+/// Màn hình Biểu đồ xu hướng & Thống kê chi tiết chỉ số sức khỏe (TV2 - Đợt 2).
+/// Đồng bộ giao diện Aurora Borealis Glassmorphism, vẽ biểu đồ [CustomPaint]
+/// theo tỷ lệ thời gian thực tế, tách 2 đường Tâm thu / Tâm trương cho Huyết áp.
 class MetricChartScreen extends StatefulWidget {
-  const MetricChartScreen({super.key});
+  final String? initialType;
+
+  const MetricChartScreen({super.key, this.initialType});
 
   @override
   State<MetricChartScreen> createState() => _MetricChartScreenState();
 }
 
 class _MetricChartScreenState extends State<MetricChartScreen> {
-  String _selectedType = 'blood_pressure';
+  final HealthMetricController _controller = HealthMetricController();
+  late String _selectedType;
   String _selectedTimeRange = '7d'; // '7d', '30d', '90d'
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedType = widget.initialType ?? 'blood_pressure';
+    _controller.loadMetrics();
+  }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: HealthMetricRepository(),
+      listenable: _controller,
       builder: (context, _) {
         final filteredData = _getFilteredData();
 
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Biểu đồ chỉ số'),
-          ),
+        return AuroraPage(
+          title: 'Biểu đồ chỉ số',
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildTypeSelector(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 _buildTimeRangeSelector(),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
                 _buildChartCard(filteredData),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
                 _buildStatisticsCard(filteredData),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
                 _buildRecentHistoryList(filteredData),
               ],
             ),
@@ -53,28 +64,61 @@ class _MetricChartScreenState extends State<MetricChartScreen> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _buildChoiceChip('blood_pressure', 'Huyết áp', Icons.bloodtype, Colors.red),
+          _buildChoiceChip(
+            'blood_pressure',
+            'Huyết áp',
+            Icons.bloodtype,
+            const Color(0xFFFB7185),
+          ),
           const SizedBox(width: 8),
-          _buildChoiceChip('heart_rate', 'Nhịp tim', Icons.favorite, Colors.pink),
+          _buildChoiceChip(
+            'heart_rate',
+            'Nhịp tim',
+            Icons.favorite,
+            const Color(0xFFF472B6),
+          ),
           const SizedBox(width: 8),
-          _buildChoiceChip('weight', 'Cân nặng', Icons.monitor_weight, Colors.blue),
+          _buildChoiceChip(
+            'weight',
+            'Cân nặng',
+            Icons.monitor_weight,
+            const Color(0xFF38BDF8),
+          ),
           const SizedBox(width: 8),
-          _buildChoiceChip('bmi', 'BMI', Icons.calculate, Colors.green),
+          _buildChoiceChip(
+            'bmi',
+            'BMI',
+            Icons.calculate,
+            const Color(0xFF34D399),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildChoiceChip(String type, String label, IconData icon, Color color) {
+  Widget _buildChoiceChip(
+    String type,
+    String label,
+    IconData icon,
+    Color color,
+  ) {
     final isSelected = _selectedType == type;
     return ChoiceChip(
-      avatar: Icon(icon, size: 18, color: isSelected ? Colors.white : color),
+      avatar: Icon(
+        icon,
+        size: 18,
+        color: isSelected ? Colors.white : color,
+      ),
       label: Text(label),
       selected: isSelected,
-      selectedColor: color,
+      selectedColor: color.withValues(alpha: 0.45),
       labelStyle: TextStyle(
-        color: isSelected ? Colors.white : Colors.black87,
+        color: Colors.white,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+      side: BorderSide(
+        color: isSelected ? color : Colors.white.withValues(alpha: 0.30),
+        width: isSelected ? 1.4 : 1.0,
       ),
       onSelected: (selected) {
         if (selected) {
@@ -103,107 +147,94 @@ class _MetricChartScreenState extends State<MetricChartScreen> {
   }
 
   List<HealthMetric> _getFilteredData() {
-    DateTime cutoffDate = DateTime.now();
-    switch (_selectedTimeRange) {
-      case '7d':
-        cutoffDate = cutoffDate.subtract(const Duration(days: 7));
-        break;
-      case '30d':
-        cutoffDate = cutoffDate.subtract(const Duration(days: 30));
-        break;
-      case '90d':
-        cutoffDate = cutoffDate.subtract(const Duration(days: 90));
-        break;
-    }
-
-    return HealthMetricRepository().getFiltered(
+    return _controller.getChartData(
       metricType: _selectedType,
-      since: cutoffDate,
+      timeRange: _selectedTimeRange,
     );
   }
 
   Widget _buildChartCard(List<HealthMetric> data) {
     final isBp = _selectedType == 'blood_pressure';
     final primaryColor = _getPrimaryColor();
-    final secondaryColor = Colors.blue.shade600;
+    const secondaryColor = Color(0xFF38BDF8);
     final unit = _getUnit();
 
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+    return Tv1GlassCard(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Biểu đồ xu hướng ($unit)',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '${data.length} điểm đo',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.72),
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (isBp)
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Biểu đồ xu hướng ($unit)',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                Text(
-                  '${data.length} điểm đo',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey.shade600,
-                      ),
-                ),
+                _buildLegendItem(primaryColor, 'Tâm thu (Systolic)'),
+                const SizedBox(width: 16),
+                _buildLegendItem(secondaryColor, 'Tâm trương (Diastolic)'),
+              ],
+            )
+          else
+            Row(
+              children: [
+                _buildLegendItem(primaryColor, '${_getMetricLabel()} ($unit)'),
               ],
             ),
-            const SizedBox(height: 12),
-            // Legend
-            if (isBp)
-              Row(
-                children: [
-                  _buildLegendItem(primaryColor, 'Tâm thu (Systolic)'),
-                  const SizedBox(width: 16),
-                  _buildLegendItem(secondaryColor, 'Tâm trương (Diastolic)'),
-                ],
-              )
-            else
-              Row(
-                children: [
-                  _buildLegendItem(primaryColor, '${_getMetricLabel()} ($unit)'),
-                ],
-              ),
-            const SizedBox(height: 16),
-            // Chart Canvas
-            if (data.isEmpty)
-              Container(
-                height: 180,
-                alignment: Alignment.center,
-                child: Text(
-                  'Không có dữ liệu trong khoảng thời gian này',
-                  style: TextStyle(color: Colors.grey.shade600, fontStyle: FontStyle.italic),
-                ),
-              )
-            else
-              SizedBox(
-                height: 200,
-                child: CustomPaint(
-                  painter: HealthMetricChartPainter(
-                    data: data,
-                    metricType: _selectedType,
-                    primaryColor: primaryColor,
-                    secondaryColor: secondaryColor,
-                    unit: unit,
-                  ),
+          const SizedBox(height: 16),
+          if (data.isEmpty)
+            Container(
+              height: 180,
+              alignment: Alignment.center,
+              child: Text(
+                'Không có dữ liệu trong khoảng thời gian này',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.70),
+                  fontStyle: FontStyle.italic,
                 ),
               ),
-            const SizedBox(height: 8),
-            Text(
-              'Trục hoành: Thời gian đo (ngày/tháng)  •  Trục tung: Giá trị ($unit)',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            )
+          else
+            SizedBox(
+              height: 210,
+              child: CustomPaint(
+                painter: HealthMetricChartPainter(
+                  data: data,
+                  metricType: _selectedType,
+                  primaryColor: primaryColor,
+                  secondaryColor: secondaryColor,
+                  unit: unit,
+                ),
+              ),
             ),
-          ],
-        ),
+          const SizedBox(height: 8),
+          Text(
+            'Trục hoành: Thời gian đo (ngày/tháng)  •  Trục tung: Giá trị ($unit)',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white.withValues(alpha: 0.72),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -223,7 +254,11 @@ class _MetricChartScreenState extends State<MetricChartScreen> {
         const SizedBox(width: 6),
         Text(
           label,
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade800),
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
         ),
       ],
     );
@@ -236,138 +271,200 @@ class _MetricChartScreenState extends State<MetricChartScreen> {
     final unit = _getUnit();
 
     if (isBp) {
-      // Thống kê riêng biệt cho cả Tâm thu và Tâm trương
       final sysValues = data.map((e) => e.value).toList();
-      final diaValues = data.where((e) => e.value2 != null).map((e) => e.value2!).toList();
+      final diaValues =
+          data.where((e) => e.value2 != null).map((e) => e.value2!).toList();
 
       final maxSys = sysValues.reduce((a, b) => a > b ? a : b);
       final minSys = sysValues.reduce((a, b) => a < b ? a : b);
       final avgSys = sysValues.reduce((a, b) => a + b) / sysValues.length;
 
-      final maxDia = diaValues.isNotEmpty ? diaValues.reduce((a, b) => a > b ? a : b) : 0.0;
-      final minDia = diaValues.isNotEmpty ? diaValues.reduce((a, b) => a < b ? a : b) : 0.0;
-      final avgDia = diaValues.isNotEmpty ? diaValues.reduce((a, b) => a + b) / diaValues.length : 0.0;
+      final maxDia =
+          diaValues.isNotEmpty ? diaValues.reduce((a, b) => a > b ? a : b) : 0.0;
+      final minDia =
+          diaValues.isNotEmpty ? diaValues.reduce((a, b) => a < b ? a : b) : 0.0;
+      final avgDia = diaValues.isNotEmpty
+          ? diaValues.reduce((a, b) => a + b) / diaValues.length
+          : 0.0;
 
-      return Card(
-        elevation: 1,
-        color: Colors.red.shade50,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Thống kê Huyết áp ($unit)',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.red.shade900,
-                        ),
+      return Tv1GlassCard(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Thống kê Huyết áp ($unit)',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.white,
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${data.length} lần đo',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red.shade900),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${data.length} lần đo',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFFB7185),
                     ),
                   ),
-                ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '🔴 Tâm thu (Systolic):',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Color(0xFFFB7185),
+                fontSize: 13,
               ),
-              const SizedBox(height: 16),
-              // Section 1: Tâm thu (Systolic)
-              Text(
-                '🔴 Tâm thu (Systolic):',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red.shade800, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    'Cao nhất',
+                    '${maxSys.toInt()} $unit',
+                    const Color(0xFFFDA4AF),
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    'Thấp nhất',
+                    '${minSys.toInt()} $unit',
+                    const Color(0xFFFDA4AF),
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    'Trung bình',
+                    '${avgSys.toStringAsFixed(0)} $unit',
+                    const Color(0xFFFDA4AF),
+                  ),
+                ),
+              ],
+            ),
+            Divider(
+              height: 24,
+              color: Colors.white.withValues(alpha: 0.18),
+            ),
+            const Text(
+              '🔵 Tâm trương (Diastolic):',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF38BDF8),
+                fontSize: 13,
               ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(child: _buildStatItem('Cao nhất', '${maxSys.toInt()} $unit', Colors.red.shade900)),
-                  Expanded(child: _buildStatItem('Thấp nhất', '${minSys.toInt()} $unit', Colors.red.shade900)),
-                  Expanded(child: _buildStatItem('Trung bình', '${avgSys.toStringAsFixed(0)} $unit', Colors.red.shade900)),
-                ],
-              ),
-              const Divider(height: 24),
-              // Section 2: Tâm trương (Diastolic)
-              Text(
-                '🔵 Tâm trương (Diastolic):',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade800, fontSize: 13),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(child: _buildStatItem('Cao nhất', '${maxDia.toInt()} $unit', Colors.blue.shade900)),
-                  Expanded(child: _buildStatItem('Thấp nhất', '${minDia.toInt()} $unit', Colors.blue.shade900)),
-                  Expanded(child: _buildStatItem('Trung bình', '${avgDia.toStringAsFixed(0)} $unit', Colors.blue.shade900)),
-                ],
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    'Cao nhất',
+                    '${maxDia.toInt()} $unit',
+                    const Color(0xFF7DD3FC),
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    'Thấp nhất',
+                    '${minDia.toInt()} $unit',
+                    const Color(0xFF7DD3FC),
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    'Trung bình',
+                    '${avgDia.toStringAsFixed(0)} $unit',
+                    const Color(0xFF7DD3FC),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       );
     } else {
-      // Thống kê cho các chỉ số đơn lẻ (Nhịp tim, Cân nặng, BMI)
       final values = data.map((e) => e.value).toList();
       final maxVal = values.reduce((a, b) => a > b ? a : b);
       final minVal = values.reduce((a, b) => a < b ? a : b);
       final avgVal = values.reduce((a, b) => a + b) / values.length;
       final color = _getPrimaryColor();
 
-      return Card(
-        elevation: 1,
-        color: color.withValues(alpha: 0.08),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Thống kê ${_getMetricLabel()}',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: color,
-                        ),
+      return Tv1GlassCard(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Thống kê ${_getMetricLabel()}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.white,
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${data.length} lần đo',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: color,
                     ),
-                    child: Text(
-                      '${data.length} lần đo',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
-                    ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildStatItem('Cao nhất', '${_formatVal(maxVal)} $unit', color),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    'Cao nhất',
+                    '${_formatVal(maxVal)} $unit',
+                    color,
                   ),
-                  Expanded(
-                    child: _buildStatItem('Thấp nhất', '${_formatVal(minVal)} $unit', color),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    'Thấp nhất',
+                    '${_formatVal(minVal)} $unit',
+                    color,
                   ),
-                  Expanded(
-                    child: _buildStatItem('Trung bình', '${_formatVal(avgVal)} $unit', color),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    'Trung bình',
+                    '${_formatVal(avgVal)} $unit',
+                    color,
                   ),
-                ],
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+          ],
         ),
       );
     }
@@ -386,7 +483,10 @@ class _MetricChartScreenState extends State<MetricChartScreen> {
       children: [
         Text(
           label,
-          style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.72),
+            fontSize: 11.5,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -404,59 +504,77 @@ class _MetricChartScreenState extends State<MetricChartScreen> {
   Widget _buildRecentHistoryList(List<HealthMetric> data) {
     if (data.isEmpty) return const SizedBox.shrink();
 
-    // Show reverse order (newest first)
     final reversed = data.reversed.toList();
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Danh sách số liệu trong kỳ',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+    return Tv1GlassCard(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Danh sách số liệu trong kỳ',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
             ),
-            const SizedBox(height: 8),
-            ...reversed.map((metric) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6.0),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 80,
-                      child: Text(
-                        '${metric.recordedAt.day.toString().padLeft(2, '0')}/${metric.recordedAt.month.toString().padLeft(2, '0')} ${metric.recordedAt.hour.toString().padLeft(2, '0')}:${metric.recordedAt.minute.toString().padLeft(2, '0')}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 10),
+          ...reversed.map((metric) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5.0),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 86,
+                    child: Text(
+                      '${metric.recordedAt.day.toString().padLeft(2, '0')}/${metric.recordedAt.month.toString().padLeft(2, '0')} ${metric.recordedAt.hour.toString().padLeft(2, '0')}:${metric.recordedAt.minute.toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: 0.75),
                       ),
                     ),
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Text(
-                          metric.displayValue,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.22),
                         ),
                       ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            metric.displayValue,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13.5,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            metric.statusLabel,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.80),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              );
-            }),
-          ],
-        ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
@@ -464,50 +582,24 @@ class _MetricChartScreenState extends State<MetricChartScreen> {
   Color _getPrimaryColor() {
     switch (_selectedType) {
       case 'blood_pressure':
-        return Colors.red.shade600;
+        return const Color(0xFFFB7185);
       case 'heart_rate':
-        return Colors.pink.shade600;
+        return const Color(0xFFF472B6);
       case 'weight':
-        return Colors.blue.shade600;
+        return const Color(0xFF38BDF8);
       case 'bmi':
-        return Colors.green.shade600;
+        return const Color(0xFF34D399);
       default:
-        return Colors.grey.shade700;
+        return const Color(0xFF7DD3FC);
     }
   }
 
-  String _getUnit() {
-    switch (_selectedType) {
-      case 'blood_pressure':
-        return 'mmHg';
-      case 'heart_rate':
-        return 'bpm';
-      case 'weight':
-        return 'kg';
-      case 'bmi':
-        return 'kg/m²';
-      default:
-        return '';
-    }
-  }
+  String _getUnit() => HealthMetric.unitForType(_selectedType);
 
-  String _getMetricLabel() {
-    switch (_selectedType) {
-      case 'blood_pressure':
-        return 'Huyết áp';
-      case 'heart_rate':
-        return 'Nhịp tim';
-      case 'weight':
-        return 'Cân nặng';
-      case 'bmi':
-        return 'BMI';
-      default:
-        return 'Chỉ số';
-    }
-  }
+  String _getMetricLabel() => HealthMetric.labelForType(_selectedType);
 }
 
-/// Custom painter for rendering the line chart with time/value axes, grid lines, and dots.
+/// Custom painter vẽ biểu đồ xu hướng với trục thời gian thực tế, đường lưới và điểm đo.
 class HealthMetricChartPainter extends CustomPainter {
   final List<HealthMetric> data;
   final String metricType;
@@ -528,7 +620,7 @@ class HealthMetricChartPainter extends CustomPainter {
     if (data.isEmpty) return;
 
     final isBp = metricType == 'blood_pressure';
-    const leftPadding = 36.0;
+    const leftPadding = 38.0;
     const rightPadding = 16.0;
     const topPadding = 24.0;
     const bottomPadding = 30.0;
@@ -536,7 +628,6 @@ class HealthMetricChartPainter extends CustomPainter {
     final chartWidth = size.width - leftPadding - rightPadding;
     final chartHeight = size.height - topPadding - bottomPadding;
 
-    // Tính Min và Max
     double minY = data.map((e) => e.value).reduce((a, b) => a < b ? a : b);
     double maxY = data.map((e) => e.value).reduce((a, b) => a > b ? a : b);
 
@@ -549,7 +640,6 @@ class HealthMetricChartPainter extends CustomPainter {
       }
     }
 
-    // Đệm khoảng cách cho trục Y
     double range = maxY - minY;
     if (range < 4) range = 8;
     minY = (minY - range * 0.15).floorToDouble();
@@ -558,12 +648,11 @@ class HealthMetricChartPainter extends CustomPainter {
     final ySpan = (maxY - minY == 0) ? 1.0 : (maxY - minY);
 
     final gridPaint = Paint()
-      ..color = Colors.grey.shade300
+      ..color = Colors.white.withValues(alpha: 0.22)
       ..strokeWidth = 0.8;
 
     final axisTextPainter = TextPainter(textDirection: TextDirection.ltr);
 
-    // Vẽ các đường lưới ngang và nhãn trục Y
     const gridSteps = 3;
     for (int i = 0; i <= gridSteps; i++) {
       final yVal = minY + (i / gridSteps) * (maxY - minY);
@@ -577,16 +666,21 @@ class HealthMetricChartPainter extends CustomPainter {
 
       axisTextPainter.text = TextSpan(
         text: yVal.toInt().toString(),
-        style: TextStyle(color: Colors.grey.shade600, fontSize: 10),
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.78),
+          fontSize: 10,
+        ),
       );
       axisTextPainter.layout();
       axisTextPainter.paint(
         canvas,
-        Offset(leftPadding - axisTextPainter.width - 6, yPos - axisTextPainter.height / 2),
+        Offset(
+          leftPadding - axisTextPainter.width - 6,
+          yPos - axisTextPainter.height / 2,
+        ),
       );
     }
 
-    // Tính khoảng cách tọa độ X theo tỷ lệ thời gian thực tế giữa các điểm đo
     final totalDurationMs = data.length > 1
         ? data.last.recordedAt.difference(data.first.recordedAt).inMilliseconds
         : 0;
@@ -597,8 +691,10 @@ class HealthMetricChartPainter extends CustomPainter {
       }
       const pointMargin = 12.0;
       final usableWidth = chartWidth - (pointMargin * 2);
-      final pointDiffMs =
-          data[index].recordedAt.difference(data.first.recordedAt).inMilliseconds;
+      final pointDiffMs = data[index]
+          .recordedAt
+          .difference(data.first.recordedAt)
+          .inMilliseconds;
       final ratio = pointDiffMs / totalDurationMs;
       return leftPadding + pointMargin + (ratio * usableWidth);
     }
@@ -609,23 +705,28 @@ class HealthMetricChartPainter extends CustomPainter {
 
     final line1Paint = Paint()
       ..color = primaryColor
-      ..strokeWidth = 2.5
+      ..strokeWidth = 2.6
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
     final line2Paint = Paint()
       ..color = secondaryColor
-      ..strokeWidth = 2.5
+      ..strokeWidth = 2.6
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    final dotPaint1 = Paint()..color = primaryColor..style = PaintingStyle.fill;
-    final dotPaint2 = Paint()..color = secondaryColor..style = PaintingStyle.fill;
-    final dotInnerPaint = Paint()..color = Colors.white..style = PaintingStyle.fill;
+    final dotPaint1 = Paint()
+      ..color = primaryColor
+      ..style = PaintingStyle.fill;
+    final dotPaint2 = Paint()
+      ..color = secondaryColor
+      ..style = PaintingStyle.fill;
+    final dotInnerPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
 
-    // Đường 1: Tâm thu hoặc chỉ số chính
     final path1 = Path();
     for (int i = 0; i < data.length; i++) {
       final x = getX(i);
@@ -640,7 +741,6 @@ class HealthMetricChartPainter extends CustomPainter {
       canvas.drawPath(path1, line1Paint);
     }
 
-    // Đổ bóng màu dưới đường chỉ số đơn
     if (!isBp && data.length > 1) {
       final fillPath = Path.from(path1)
         ..lineTo(getX(data.length - 1), topPadding + chartHeight)
@@ -652,15 +752,16 @@ class HealthMetricChartPainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            primaryColor.withValues(alpha: 0.22),
+            primaryColor.withValues(alpha: 0.30),
             primaryColor.withValues(alpha: 0.0),
           ],
-        ).createShader(Rect.fromLTWH(leftPadding, topPadding, chartWidth, chartHeight));
+        ).createShader(
+          Rect.fromLTWH(leftPadding, topPadding, chartWidth, chartHeight),
+        );
 
       canvas.drawPath(fillPath, fillPaint);
     }
 
-    // Đường 2: Tâm trương (cho Huyết áp)
     if (isBp) {
       final path2 = Path();
       for (int i = 0; i < data.length; i++) {
@@ -679,17 +780,14 @@ class HealthMetricChartPainter extends CustomPainter {
       }
     }
 
-    // Vẽ điểm tròn, giá trị số và ngày tháng trục X
     for (int i = 0; i < data.length; i++) {
       final m = data[i];
       final x = getX(i);
       final y1 = getY(m.value);
 
-      // Điểm 1
-      canvas.drawCircle(Offset(x, y1), 4.5, dotPaint1);
+      canvas.drawCircle(Offset(x, y1), 4.8, dotPaint1);
       canvas.drawCircle(Offset(x, y1), 2.2, dotInnerPaint);
 
-      // Chữ số giá trị 1
       final valStr = isBp
           ? '${m.value.toInt()}'
           : (m.value == m.value.roundToDouble()
@@ -699,7 +797,7 @@ class HealthMetricChartPainter extends CustomPainter {
         text: valStr,
         style: TextStyle(
           color: primaryColor,
-          fontSize: 10,
+          fontSize: 10.5,
           fontWeight: FontWeight.bold,
         ),
       );
@@ -709,17 +807,16 @@ class HealthMetricChartPainter extends CustomPainter {
         Offset(x - axisTextPainter.width / 2, y1 - 16),
       );
 
-      // Điểm 2 & Chữ số giá trị 2 (nếu Huyết áp)
       if (isBp && m.value2 != null) {
         final y2 = getY(m.value2!);
-        canvas.drawCircle(Offset(x, y2), 4.5, dotPaint2);
+        canvas.drawCircle(Offset(x, y2), 4.8, dotPaint2);
         canvas.drawCircle(Offset(x, y2), 2.2, dotInnerPaint);
 
         axisTextPainter.text = TextSpan(
           text: '${m.value2!.toInt()}',
           style: TextStyle(
             color: secondaryColor,
-            fontSize: 10,
+            fontSize: 10.5,
             fontWeight: FontWeight.bold,
           ),
         );
@@ -730,12 +827,14 @@ class HealthMetricChartPainter extends CustomPainter {
         );
       }
 
-      // Nhãn ngày tháng trên trục X
       final dateText =
           '${m.recordedAt.day.toString().padLeft(2, '0')}/${m.recordedAt.month.toString().padLeft(2, '0')}';
       axisTextPainter.text = TextSpan(
         text: dateText,
-        style: TextStyle(color: Colors.grey.shade700, fontSize: 10),
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.80),
+          fontSize: 10,
+        ),
       );
       axisTextPainter.layout();
       axisTextPainter.paint(

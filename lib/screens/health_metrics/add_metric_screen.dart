@@ -1,13 +1,25 @@
 import 'package:flutter/material.dart';
+import '../../controllers/health_metric_controller.dart';
 import '../../models/health_metric.dart';
-import '../../repositories/health_metric_repository.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/aurora_page.dart';
+import '../../widgets/tv1_glass_widgets.dart';
+import 'heart_rate_measure_screen.dart';
 
-/// Screen for adding a new health metric record.
-/// Handles numeric parsing (supporting commas), range checks, future date prevention,
-/// and adds the record directly to the shared [HealthMetricRepository].
+/// Màn hình Thêm mới hoặc Chỉnh sửa bản ghi chỉ số sức khỏe (TV2 - Đợt 2).
+/// Đồng bộ thiết kế Glassmorphism Aurora Borealis, kết nối [HealthMetricController]
+/// và SQLite, tích hợp đo nhịp tim bằng đèn Flash (PPG) & tự động tính BMI.
 class AddMetricScreen extends StatefulWidget {
-  const AddMetricScreen({super.key});
+  final HealthMetric? initialMetric;
+  final String? initialType;
+
+  const AddMetricScreen({
+    super.key,
+    this.initialMetric,
+    this.initialType,
+  });
+
+  bool get isEditing => initialMetric != null;
 
   @override
   State<AddMetricScreen> createState() => _AddMetricScreenState();
@@ -15,10 +27,12 @@ class AddMetricScreen extends StatefulWidget {
 
 class _AddMetricScreenState extends State<AddMetricScreen> {
   final _formKey = GlobalKey<FormState>();
-  String _selectedType = 'blood_pressure';
-  DateTime _selectedDate = DateTime.now();
+  final HealthMetricController _controller = HealthMetricController();
 
-  // Map of metric type key -> Vietnamese label
+  late String _selectedType;
+  late DateTime _selectedDate;
+  bool _isSubmitting = false;
+
   static const Map<String, String> _metricTypeLabels = {
     'blood_pressure': 'Huyết áp',
     'heart_rate': 'Nhịp tim',
@@ -26,11 +40,39 @@ class _AddMetricScreenState extends State<AddMetricScreen> {
     'bmi': 'BMI',
   };
 
-  // Controllers
   final _sysController = TextEditingController();
   final _diaController = TextEditingController();
-  final _valueController = TextEditingController(); // For HR, Weight, BMI
+  final _valueController = TextEditingController();
   final _noteController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialMetric;
+    if (initial != null) {
+      _selectedType = initial.metricType;
+      _selectedDate = initial.recordedAt;
+      if (initial.metricType == 'blood_pressure') {
+        _sysController.text = _formatInputValue(initial.value);
+        if (initial.value2 != null) {
+          _diaController.text = _formatInputValue(initial.value2!);
+        }
+      } else {
+        _valueController.text = _formatInputValue(initial.value);
+      }
+      _noteController.text = initial.note ?? '';
+    } else {
+      _selectedType = widget.initialType ?? 'blood_pressure';
+      _selectedDate = DateTime.now();
+    }
+  }
+
+  String _formatInputValue(double v) {
+    if (v == v.roundToDouble()) {
+      return v.toInt().toString();
+    }
+    return v.toStringAsFixed(1);
+  }
 
   @override
   void dispose() {
@@ -39,16 +81,6 @@ class _AddMetricScreenState extends State<AddMetricScreen> {
     _valueController.dispose();
     _noteController.dispose();
     super.dispose();
-  }
-
-  /// Normalizes and parses input string to a finite double.
-  /// Converts comma to dot (e.g. "65,5" -> 65.5) and checks isFinite.
-  double? _parseNumber(String? raw) {
-    if (raw == null) return null;
-    final normalized = raw.trim().replaceAll(',', '.');
-    final val = double.tryParse(normalized);
-    if (val == null || !val.isFinite || val.isNaN) return null;
-    return val;
   }
 
   String _formatDateTime(DateTime dt) {
@@ -65,12 +97,14 @@ class _AddMetricScreenState extends State<AddMetricScreen> {
       context: context,
       initialDate: _selectedDate.isAfter(now) ? now : _selectedDate,
       firstDate: DateTime(2000),
-      lastDate: now, // Prevents picking dates in the future
+      lastDate: now,
+      builder: auroraPickerBuilder,
     );
     if (date != null && mounted) {
       final TimeOfDay? time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(_selectedDate),
+        builder: auroraPickerBuilder,
       );
       if (time != null && mounted) {
         final pickedDateTime = DateTime(
@@ -81,10 +115,12 @@ class _AddMetricScreenState extends State<AddMetricScreen> {
           time.minute,
         );
 
-        if (pickedDateTime.isAfter(DateTime.now())) {
+        final dateError =
+            HealthMetricController.validateRecordedAt(pickedDateTime);
+        if (dateError != null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Thời điểm đo không được ở tương lai!'),
+            SnackBar(
+              content: Text(dateError),
               backgroundColor: Colors.orange,
             ),
           );
@@ -98,12 +134,137 @@ class _AddMetricScreenState extends State<AddMetricScreen> {
     }
   }
 
-  void _saveForm() {
-    // 1. Chặn thời điểm đo ở tương lai và giữ nguyên form nếu vi phạm
-    if (_selectedDate.isAfter(DateTime.now())) {
+  Future<void> _openFlashHeartRateScanner() async {
+    final measuredBpm = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const HeartRateMeasureScreen(returnValueOnly: true),
+      ),
+    );
+    if (measuredBpm != null && mounted) {
+      setState(() {
+        _valueController.text = measuredBpm.toString();
+        if (_noteController.text.trim().isEmpty) {
+          _noteController.text = 'Đo bằng cảm biến đèn Flash PPG';
+        }
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Thời điểm đo không được vượt quá thời gian hiện tại!'),
+        SnackBar(
+          content: Text('Đã điền kết quả đo Flash PPG: $measuredBpm bpm'),
+          backgroundColor: const Color(0xFF059669),
+        ),
+      );
+    }
+  }
+
+  Future<void> _autoCalculateBmi() async {
+    final suggestion = _controller.suggestBmi();
+    if (suggestion.bmi != null) {
+      final bmiVal = suggestion.bmi!;
+      setState(() {
+        _valueController.text = bmiVal.toStringAsFixed(1);
+        if (_noteController.text.trim().isEmpty) {
+          _noteController.text =
+              'Tự động tính từ chiều cao hồ sơ & cân nặng gần nhất';
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('Đã tự động tính BMI: ${bmiVal.toStringAsFixed(1)} kg/m²'),
+          backgroundColor: const Color(0xFF059669),
+        ),
+      );
+      return;
+    }
+
+    final heightCtrl = TextEditingController(
+      text: suggestion.heightCm != null
+          ? _formatInputValue(suggestion.heightCm!)
+          : '170',
+    );
+    final weightCtrl = TextEditingController(
+      text: suggestion.weightKg != null
+          ? _formatInputValue(suggestion.weightKg!)
+          : '65',
+    );
+
+    final calculated = await showAuroraDialog<double>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Tính nhanh chỉ số BMI'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: heightCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white),
+                decoration: Tv1GlassTheme.inputDecoration(
+                  labelText: 'Chiều cao (cm)',
+                  hintText: 'VD: 170',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: weightCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white),
+                decoration: Tv1GlassTheme.inputDecoration(
+                  labelText: 'Cân nặng (kg)',
+                  hintText: 'VD: 65',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final h = HealthMetricController.parseNumber(heightCtrl.text);
+                final w = HealthMetricController.parseNumber(weightCtrl.text);
+                if (h == null ||
+                    w == null ||
+                    h < 50 ||
+                    h > 250 ||
+                    w < 2 ||
+                    w > 300) {
+                  return;
+                }
+                final bmi = AuthService.calculateBmi(h, w);
+                Navigator.pop(dialogContext, bmi);
+              },
+              child: const Text('Áp dụng'),
+            ),
+          ],
+        );
+      },
+    );
+
+    heightCtrl.dispose();
+    weightCtrl.dispose();
+
+    if (calculated != null && mounted) {
+      setState(() {
+        _valueController.text = calculated.toStringAsFixed(1);
+      });
+    }
+  }
+
+  Future<void> _saveForm() async {
+    if (_isSubmitting) return;
+
+    final dateErr = HealthMetricController.validateRecordedAt(_selectedDate);
+    if (dateErr != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(dateErr),
           backgroundColor: Colors.red,
         ),
       );
@@ -116,78 +277,90 @@ class _AddMetricScreenState extends State<AddMetricScreen> {
 
     double primaryValue = 0;
     double? secondaryValue;
-    String unit = '';
 
     if (_selectedType == 'blood_pressure') {
-      primaryValue = _parseNumber(_sysController.text)!;
-      secondaryValue = _parseNumber(_diaController.text)!;
-      unit = 'mmHg';
+      primaryValue = HealthMetricController.parseNumber(_sysController.text)!;
+      secondaryValue = HealthMetricController.parseNumber(_diaController.text)!;
     } else {
-      primaryValue = _parseNumber(_valueController.text)!;
-      switch (_selectedType) {
-        case 'heart_rate':
-          unit = 'bpm';
-          break;
-        case 'weight':
-          unit = 'kg';
-          break;
-        case 'bmi':
-          unit = 'kg/m²';
-          break;
+      primaryValue = HealthMetricController.parseNumber(_valueController.text)!;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      HealthMetric saved;
+      if (widget.isEditing) {
+        saved = await _controller.updateMetric(
+          existing: widget.initialMetric!,
+          metricType: _selectedType,
+          value: primaryValue,
+          value2: _selectedType == 'blood_pressure' ? secondaryValue : null,
+          note: _noteController.text.trim().isEmpty
+              ? null
+              : _noteController.text.trim(),
+          recordedAt: _selectedDate,
+        );
+      } else {
+        saved = await _controller.addMetric(
+          metricType: _selectedType,
+          value: primaryValue,
+          value2: secondaryValue,
+          note: _noteController.text.trim().isEmpty
+              ? null
+              : _noteController.text.trim(),
+          recordedAt: _selectedDate,
+        );
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.isEditing
+                ? 'Đã cập nhật chỉ số thành công!'
+                : 'Đã lưu chỉ số thành công!',
+          ),
+          backgroundColor: const Color(0xFF059669),
+        ),
+      );
+
+      Navigator.pop(context, widget.isEditing ? saved : true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _controller.errorMessage ?? 'Không thể lưu chỉ số sức khỏe: $e',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
       }
     }
-
-    // Tạo bản ghi HealthMetric và đưa vào nguồn dữ liệu dùng chung
-    final currentUserId = AuthService().currentUser?.id;
-    if (currentUserId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng đăng nhập để lưu chỉ số.')),
-      );
-      return;
-    }
-    
-    final newMetric = HealthMetric(
-      id: DateTime.now().millisecondsSinceEpoch,
-      userId: currentUserId,
-      metricType: _selectedType,
-      value: primaryValue,
-      value2: secondaryValue,
-      unit: unit,
-      note: _noteController.text.trim().isEmpty
-          ? null
-          : _noteController.text.trim(),
-      recordedAt: _selectedDate,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
-
-    HealthMetricRepository().add(newMetric);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đã lưu chỉ số thành công!'),
-        backgroundColor: Colors.green,
-      ),
-    );
-
-    Navigator.pop(context, true);
   }
 
   Widget _buildTypeSelector() {
     return DropdownButtonFormField<String>(
-      decoration: const InputDecoration(
+      decoration: Tv1GlassTheme.inputDecoration(
         labelText: 'Loại chỉ số',
-        border: OutlineInputBorder(),
+        prefixIcon:
+            const Icon(Icons.category_outlined, color: Color(0xFF7DD3FC)),
       ),
+      dropdownColor: const Color(0xFF1E1B4B),
+      style: const TextStyle(color: Colors.white, fontSize: 15),
       initialValue: _selectedType,
       items: _metricTypeLabels.entries.map((entry) {
         return DropdownMenuItem(
           value: entry.key,
-          child: Text(entry.value),
+          child: Text(entry.value, style: const TextStyle(color: Colors.white)),
         );
       }).toList(),
       onChanged: (value) {
-        if (value != null) {
+        if (value != null && value != _selectedType) {
           setState(() {
             _selectedType = value;
             _sysController.clear();
@@ -199,105 +372,234 @@ class _AddMetricScreenState extends State<AddMetricScreen> {
     );
   }
 
+  Widget _buildSmartAssistantBar() {
+    if (_selectedType == 'heart_rate') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: OutlinedButton.icon(
+          onPressed: _openFlashHeartRateScanner,
+          icon: const Icon(Icons.flashlight_on, color: Color(0xFFFDE047)),
+          label: const Text('Đo bằng đèn Flash Camera (PPG)'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: Color(0xFFFDE047), width: 1.2),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      );
+    }
+    if (_selectedType == 'bmi') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: OutlinedButton.icon(
+          onPressed: _autoCalculateBmi,
+          icon: const Icon(Icons.auto_fix_high, color: Color(0xFF6EE7B7)),
+          label: const Text('Tự động tính BMI từ Chiều cao & Cân nặng'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: Color(0xFF6EE7B7), width: 1.2),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   Widget _buildInputFields() {
     if (_selectedType == 'blood_pressure') {
       return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: TextFormField(
               controller: _sysController,
-              decoration: const InputDecoration(
+              style: const TextStyle(color: Colors.white),
+              decoration: Tv1GlassTheme.inputDecoration(
                 labelText: 'Tâm thu (mmHg)',
-                border: OutlineInputBorder(),
                 hintText: 'VD: 120',
               ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) return 'Bắt buộc nhập';
-                final v = _parseNumber(value);
-                if (v == null) return 'Phải là số hợp lệ';
-                if (v < 60 || v > 250) return 'Từ 60 – 250 mmHg';
-                return null;
-              },
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => setState(() {}),
+              validator: (value) => HealthMetricController.validatePrimaryValue(
+                'blood_pressure',
+                value,
+              ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: TextFormField(
               controller: _diaController,
-              decoration: const InputDecoration(
+              style: const TextStyle(color: Colors.white),
+              decoration: Tv1GlassTheme.inputDecoration(
                 labelText: 'Tâm trương (mmHg)',
-                border: OutlineInputBorder(),
                 hintText: 'VD: 80',
               ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) return 'Bắt buộc nhập';
-                final v = _parseNumber(value);
-                if (v == null) return 'Phải là số hợp lệ';
-                if (v < 40 || v > 150) return 'Từ 40 – 150 mmHg';
-                return null;
-              },
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => setState(() {}),
+              validator: (value) =>
+                  HealthMetricController.validateSecondaryValue(
+                'blood_pressure',
+                value,
+                primaryRaw: _sysController.text,
+              ),
             ),
           ),
         ],
       );
-    } else {
-      String label = '';
-      String hint = '';
-      String errorRange = '';
-      double min = 0;
-      double max = 0;
+    }
 
-      switch (_selectedType) {
-        case 'heart_rate':
-          label = 'Nhịp tim (bpm)';
-          hint = 'VD: 75';
-          min = 30;
-          max = 250;
-          errorRange = 'Từ 30 – 250 bpm';
-          break;
-        case 'weight':
-          label = 'Cân nặng (kg)';
-          hint = 'VD: 65.5 hoặc 65,5';
-          min = 2;
-          max = 300;
-          errorRange = 'Từ 2 – 300 kg';
-          break;
-        case 'bmi':
-          label = 'BMI (kg/m²)';
-          hint = 'VD: 22.4';
-          min = 10;
-          max = 50;
-          errorRange = 'Từ 10 – 50 kg/m²';
-          break;
+    String label = '';
+    String hint = '';
+    switch (_selectedType) {
+      case 'heart_rate':
+        label = 'Nhịp tim (bpm)';
+        hint = 'VD: 75';
+        break;
+      case 'weight':
+        label = 'Cân nặng (kg)';
+        hint = 'VD: 65.5 hoặc 65,5';
+        break;
+      case 'bmi':
+        label = 'BMI (kg/m²)';
+        hint = 'VD: 22.4';
+        break;
+    }
+
+    return TextFormField(
+      controller: _valueController,
+      style: const TextStyle(color: Colors.white),
+      decoration: Tv1GlassTheme.inputDecoration(
+        labelText: label,
+        hintText: hint,
+      ),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      onChanged: (_) => setState(() {}),
+      validator: (value) => HealthMetricController.validatePrimaryValue(
+        _selectedType,
+        value,
+      ),
+    );
+  }
+
+  HealthMetric? _buildPreviewMetric() {
+    final now = DateTime.now();
+    if (_selectedType == 'blood_pressure') {
+      final sys = HealthMetricController.parseNumber(_sysController.text);
+      final dia = HealthMetricController.parseNumber(_diaController.text);
+      if (sys == null ||
+          dia == null ||
+          sys < 60 ||
+          sys > 250 ||
+          dia < 40 ||
+          dia > 150 ||
+          sys <= dia) {
+        return null;
       }
-
-      return TextFormField(
-        controller: _valueController,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          border: const OutlineInputBorder(),
-        ),
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) return 'Bắt buộc nhập';
-          final v = _parseNumber(value);
-          if (v == null) return 'Phải là số hợp lệ';
-          if (v < min || v > max) return 'Không hợp lệ ($errorRange)';
-          return null;
-        },
+      return HealthMetric(
+        userId: 1,
+        metricType: 'blood_pressure',
+        value: sys,
+        value2: dia,
+        unit: 'mmHg',
+        recordedAt: _selectedDate,
+        createdAt: now,
+        updatedAt: now,
+      );
+    } else {
+      final v = HealthMetricController.parseNumber(_valueController.text);
+      if (v == null) return null;
+      if (HealthMetricController.validatePrimaryValue(
+            _selectedType,
+            _valueController.text,
+          ) !=
+          null) {
+        return null;
+      }
+      return HealthMetric(
+        userId: 1,
+        metricType: _selectedType,
+        value: v,
+        unit: HealthMetric.unitForType(_selectedType),
+        recordedAt: _selectedDate,
+        createdAt: now,
+        updatedAt: now,
       );
     }
   }
 
+  Widget _buildLiveAssessmentPreview() {
+    final preview = _buildPreviewMetric();
+    if (preview == null) return const SizedBox.shrink();
+
+    final Color badgeColor;
+    switch (preview.statusSeverity) {
+      case 'normal':
+        badgeColor = const Color(0xFF34D399);
+        break;
+      case 'warning':
+        badgeColor = const Color(0xFFFBBF24);
+        break;
+      default:
+        badgeColor = const Color(0xFFFB7185);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: badgeColor.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: badgeColor.withValues(alpha: 0.45)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.health_and_safety, color: badgeColor, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Đánh giá sơ bộ: ${preview.statusLabel}',
+                    style: TextStyle(
+                      color: badgeColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    preview.statusAdvice,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.88),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Thêm chỉ số'),
-      ),
+    return AuroraPage(
+      title: widget.isEditing ? 'Chỉnh sửa chỉ số' : 'Thêm chỉ số',
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -305,34 +607,73 @@ class _AddMetricScreenState extends State<AddMetricScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildTypeSelector(),
-              const SizedBox(height: 24),
-              _buildInputFields(),
-              const SizedBox(height: 24),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Thời gian'),
-                subtitle: Text(_formatDateTime(_selectedDate)),
-                trailing: const Icon(Icons.calendar_today),
-                onTap: _selectDateTime,
-              ),
-              const SizedBox(height: 24),
-              TextFormField(
-                controller: _noteController,
-                decoration: const InputDecoration(
-                  labelText: 'Ghi chú (tùy chọn)',
-                  border: OutlineInputBorder(),
-                  alignLabelWithHint: true,
+              Tv1GlassCard(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildTypeSelector(),
+                    const SizedBox(height: 18),
+                    _buildSmartAssistantBar(),
+                    _buildInputFields(),
+                    _buildLiveAssessmentPreview(),
+                    const SizedBox(height: 18),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: ListTile(
+                        title: const Text(
+                          'Thời gian',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                        ),
+                        subtitle: Text(
+                          _formatDateTime(_selectedDate),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        trailing: const Icon(
+                          Icons.calendar_today,
+                          color: Color(0xFF7DD3FC),
+                        ),
+                        onTap: _selectDateTime,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    TextFormField(
+                      controller: _noteController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: Tv1GlassTheme.inputDecoration(
+                        labelText: 'Ghi chú (tùy chọn)',
+                        hintText: 'VD: Đo buổi sáng sau khi nghỉ 5 phút',
+                      ),
+                      maxLines: 3,
+                    ),
+                  ],
                 ),
-                maxLines: 3,
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               FilledButton(
-                onPressed: _saveForm,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                onPressed: _isSubmitting ? null : _saveForm,
+                style: Tv1GlassTheme.primaryButtonStyle().copyWith(
+                  padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(vertical: 16),
+                  ),
                 ),
-                child: const Text('Lưu', style: TextStyle(fontSize: 16)),
+                child: Text(
+                  widget.isEditing ? 'Cập nhật' : 'Lưu',
+                  style: const TextStyle(fontSize: 16),
+                ),
               ),
             ],
           ),
