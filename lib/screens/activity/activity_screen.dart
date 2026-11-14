@@ -92,12 +92,31 @@ class _ActivityScreenState extends State<ActivityScreen> {
     await _saveActivity(result);
   }
 
-  /// Chỉ cập nhật giao diện SAU khi ghi SQLite thành công; lỗi thì báo và cho thử lại.
+  /// Bước 1: ghi SQLite. Chỉ khi ghi THẤT BẠI mới cho "Thử lại" lưu — nếu đã
+  /// ghi thành công thì không bao giờ gọi add() lần nữa (tránh trùng hoạt động).
   Future<void> _saveActivity(Activity activity) async {
     final repo = _activityRepo;
     if (repo == null) return;
     try {
       await repo.add(activity);
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(
+        context,
+        'Chưa lưu được hoạt động: ${errorText(e)}',
+        onRetry: () => _saveActivity(activity),
+      );
+      return;
+    }
+    await _reloadAfterSave();
+  }
+
+  /// Bước 2: tải lại danh sách sau khi đã lưu. Lỗi ở đây KHÔNG phải lỗi lưu:
+  /// bản ghi đã nằm trong SQLite, nút Thử lại chỉ tải lại danh sách.
+  Future<void> _reloadAfterSave() async {
+    final repo = _activityRepo;
+    if (repo == null) return;
+    try {
       final list = await repo.getAll();
       if (!mounted) return;
       setState(() => _activities = list);
@@ -105,8 +124,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
       if (!mounted) return;
       showErrorSnack(
         context,
-        'Chưa lưu được hoạt động: ${errorText(e)}',
-        onRetry: () => _saveActivity(activity),
+        'Đã lưu hoạt động nhưng chưa tải lại được danh sách: ${errorText(e)}',
+        onRetry: _reloadAfterSave,
       );
     }
   }

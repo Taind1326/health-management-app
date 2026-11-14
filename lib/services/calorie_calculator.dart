@@ -99,12 +99,15 @@ class CalorieCalculator {
   /// Quy tắc thống nhất: ưu tiên chỉ số cân nặng mới nhất của chính người đó
   /// (có ngày ghi nhận); nếu chưa có thì dùng cân nặng trong hồ sơ.
   /// Trả về null nếu chưa đăng nhập hoặc chưa có cân nặng hợp lệ.
-  static double? currentWeightKg() {
+  static Future<double?> currentWeightKg({
+    HealthMetricRepository? metrics,
+  }) async {
     final userId = AuthService().currentUser?.id;
     if (userId == null) return null;
 
-    final latest =
-        HealthMetricRepository().getLatestForUser(userId, 'weight')?.value;
+    final latest = (await (metrics ?? HealthMetricRepository())
+            .fetchLatestByUser(userId, 'weight', sqliteOnly: true))
+        ?.value;
     if (_validWeight(latest)) return latest;
 
     final profileWeight = AuthService().getProfile(userId).weight;
