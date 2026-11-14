@@ -95,7 +95,16 @@ class HealthMetricRepository extends ChangeNotifier {
   }
 
   /// Lấy bản ghi mới nhất theo loại chỉ số của `userId` từ SQLite.
-  Future<HealthMetric?> fetchLatestByUser(int userId, String metricType) async {
+  ///
+  /// Mặc định, nếu SQLite chưa có bản ghi (hoặc lỗi) thì rơi về bộ đệm RAM.
+  /// Với `sqliteOnly: true`, chỉ tin SQLite: không có bản ghi thì trả về null,
+  /// lỗi đọc thì ném ra — để nơi gọi không vô tình dùng dữ liệu cũ/mẫu trong
+  /// bộ đệm (ví dụ khi tính calo ngay sau khi khởi động app).
+  Future<HealthMetric?> fetchLatestByUser(
+    int userId,
+    String metricType, {
+    bool sqliteOnly = false,
+  }) async {
     try {
       final db = await _open();
       final rows = await db.query(
@@ -108,9 +117,9 @@ class HealthMetricRepository extends ChangeNotifier {
       if (rows.isNotEmpty) {
         return HealthMetric.fromMap(rows.first);
       }
-      if (_strictSqlite) return null;
+      if (_strictSqlite || sqliteOnly) return null;
     } catch (_) {
-      if (_strictSqlite) rethrow;
+      if (_strictSqlite || sqliteOnly) rethrow;
     }
     return getLatestForUser(userId, metricType);
   }

@@ -292,15 +292,6 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     final destination = _destinationCtrl.text.trim();
     if (origin.isEmpty || destination.isEmpty) return;
 
-    final weightKg = CalorieCalculator.currentWeightKg();
-    if (weightKg == null) {
-      setState(() {
-        _routeError = 'Chưa có cân nặng để tính calo. '
-            'Hãy cập nhật cân nặng trong hồ sơ hoặc thêm chỉ số cân nặng.';
-      });
-      return;
-    }
-
     final requestId = ++_routeRequestId;
     setState(() {
       _calculatingRoute = true;
@@ -308,6 +299,18 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
     });
 
     try {
+      // Cân nặng mới nhất đọc từ SQLite (không dùng bộ đệm RAM).
+      final weightKg = await CalorieCalculator.currentWeightKg();
+      if (!mounted || requestId != _routeRequestId) return;
+      if (weightKg == null) {
+        setState(() {
+          _calculatingRoute = false;
+          _routeError = 'Chưa có cân nặng để tính calo. '
+              'Hãy cập nhật cân nặng trong hồ sơ hoặc thêm chỉ số cân nặng.';
+        });
+        return;
+      }
+
       final route = _type == 'cycling'
           ? await _mapsService.calculateCyclingRoute(
               origin: origin,
@@ -355,7 +358,7 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                         child: Text(Activity.labelOf(t)),
                       ))
                   .toList(),
-              onChanged: (value) {
+              onChanged: (value) async {
                 if (value == null) return;
 
                 final keepRoute = _isRouteType &&
@@ -378,12 +381,22 @@ class _AddActivityScreenState extends State<AddActivityScreen> {
                 if (!keepRoute) return;
                 // Giữ nguyên điểm đi/đến. Cùng loại đường (đi bộ <-> chạy bộ)
                 // thì chỉ tính lại số liệu; khác loại (đạp xe) thì tính tuyến mới.
-                final weightKg = CalorieCalculator.currentWeightKg();
-                if (oldRoute != null &&
-                    oldProfile == _routeProfile &&
-                    weightKg != null) {
-                  setState(() => _fillFromRoute(oldRoute, weightKg));
-                } else if (_originCtrl.text.trim().isNotEmpty &&
+                if (oldRoute != null && oldProfile == _routeProfile) {
+                  final changeId = ++_routeRequestId;
+                  double? weightKg;
+                  try {
+                    weightKg = await CalorieCalculator.currentWeightKg();
+                  } catch (_) {
+                    weightKg = null; // _calculateNow bên dưới sẽ báo lỗi
+                  }
+                  // Đã đổi loại/điểm đi-đến trong lúc đọc SQLite.
+                  if (!mounted || changeId != _routeRequestId) return;
+                  if (weightKg != null) {
+                    setState(() => _fillFromRoute(oldRoute, weightKg!));
+                    return;
+                  }
+                }
+                if (_originCtrl.text.trim().isNotEmpty &&
                     _destinationCtrl.text.trim().isNotEmpty) {
                   _calculateNow();
                 }
