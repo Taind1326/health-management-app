@@ -1,3 +1,4 @@
+import '../../services/reminder_notifications.dart';
 import '../../repositories/medication_repository.dart';
 import 'medication_style.dart';
 
@@ -99,6 +100,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
     final repository = MedicationRepository(widget.userId);
     try {
       await repository.saveReminders(List.of(_reminders));
+      await _syncNotifications();
       if (!mounted) return;
       widget.onChanged(List.of(_reminders));
     } catch (e) {
@@ -116,6 +118,53 @@ class _ReminderScreenState extends State<ReminderScreen> {
       if (mounted)
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(medError(e))));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _syncNotifications({bool askPermission = false}) async {
+    final notifications = ReminderNotifications.instance;
+    if (!notifications.supported) return;
+    try {
+      if (askPermission && !await notifications.requestPermission()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Hãy cho phép Thông báo trong cài đặt Android rồi thử lại.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      await notifications.sync(widget.userId);
+      if (askPermission && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã đồng bộ các lịch nhắc sắp tới đang bật.'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Chưa cập nhật được thông báo Android. Hãy thử đồng bộ lại.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _enableNotifications() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _syncNotifications(askPermission: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -243,12 +292,20 @@ class _ReminderScreenState extends State<ReminderScreen> {
       ),
       body: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Text(
-              'Lịch nhắc được lưu trong ứng dụng. Thông báo hệ điều hành chưa được tích hợp.',
+              ReminderNotifications.instance.supported
+                  ? 'Android giữ tối đa 120 mốc trong 14 ngày lịch tới. Giờ báo có thể trễ. Mở app và đăng nhập lại để làm mới lịch.'
+                  : 'Lịch nhắc được lưu trong app. Thông báo hiện hỗ trợ Android.',
             ),
           ),
+          if (ReminderNotifications.instance.supported)
+            TextButton.icon(
+              onPressed: _saving ? null : _enableNotifications,
+              icon: const Icon(Icons.notifications_active_outlined),
+              label: const Text('Bật / đồng bộ thông báo Android'),
+            ),
           Expanded(
             child: _reminders.isEmpty
                 ? const Center(

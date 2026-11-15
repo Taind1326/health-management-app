@@ -5,6 +5,7 @@ import '../../models/medication_schedule.dart';
 import '../../models/reminder.dart';
 import '../../services/auth_service.dart';
 import '../../services/medication_rules.dart';
+import '../../services/reminder_notifications.dart';
 import '../../repositories/medication_repository.dart';
 import 'medication_form_screen.dart';
 import 'medication_schedule_screen.dart';
@@ -73,6 +74,19 @@ class _MedicationScreenState extends State<MedicationScreen> {
     try {
       await action();
       await _load();
+      try {
+        await ReminderNotifications.instance.sync(repo!.userId);
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Đã lưu dữ liệu. Chưa cập nhật được thông báo Android; hãy mở Lịch nhắc để thử lại.',
+              ),
+            ),
+          );
+        }
+      }
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context)

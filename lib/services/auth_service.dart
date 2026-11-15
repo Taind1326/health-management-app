@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import '../models/user.dart';
 import '../models/health_profile.dart';
 import '../models/health_goal.dart';
 import '../utils/hash_util.dart';
 import '../repositories/auth_repository.dart';
+import 'reminder_notifications.dart';
 
 class AuthService {
   // Singleton pattern để dùng chung nguồn dữ liệu trong toàn bộ phiên chạy ứng dụng
@@ -131,6 +134,7 @@ class AuthService {
         final goals = await _repository.getGoals(dbUser.id);
         _goals[dbUser.id] = goals;
 
+        unawaited(ReminderNotifications.instance.syncQuietly(dbUser.id));
         return dbUser;
       }
       return null;
@@ -159,6 +163,11 @@ class AuthService {
   // Đăng xuất: xóa phiên người dùng hiện tại
   void logout() {
     _currentUser = null;
+    if (!_isTestingMode) {
+      unawaited(
+        ReminderNotifications.instance.clear().catchError((Object _) {}),
+      );
+    }
   }
 
   // Kiểm tra tên tài khoản đã tồn tại chưa
