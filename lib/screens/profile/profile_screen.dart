@@ -47,8 +47,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (updatedProfile != null && mounted) {
-      await AuthService().updateProfile(updatedProfile);
-      if (!mounted) return;
       setState(() {
         _profile = updatedProfile;
       });
