@@ -21,6 +21,24 @@ class _MedicationHistoryScreenState extends State<MedicationHistoryScreen> {
   List<Map<String, Object?>> logs = [];
   bool loading = true, busy = false;
   String? error;
+  DateTime selectedDay = MedicationRules.day(DateTime.now());
+
+  Future<void> _chooseDay() async {
+    final now = MedicationRules.day(DateTime.now());
+    final first = DateTime(now.year, now.month, now.day - 30);
+    final initial = selectedDay.isBefore(first) || selectedDay.isAfter(now)
+        ? now
+        : selectedDay;
+    final picked = await showDatePicker(
+      context: context,
+      firstDate: first,
+      lastDate: now,
+      initialDate: initial,
+    );
+    if (!mounted || picked == null || busy) return;
+    setState(() => selectedDay = picked);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -66,7 +84,7 @@ class _MedicationHistoryScreenState extends State<MedicationHistoryScreen> {
       builder: (ctx) => AlertDialog(
         title: Text(status == 'taken' ? 'Xác nhận đã uống' : 'Xác nhận bỏ qua'),
         content: const Text(
-          'Kết quả và lượng thuốc sẽ được cập nhật cùng nhau. Nếu sửa kết quả cũ, lượng đã trừ sẽ được điều chỉnh tương ứng.',
+          'Chỉ ghi lại việc đã xảy ra. Ghi nhận đã uống sẽ trừ liều nếu đang theo dõi tồn kho. Nếu lượng tồn đã được kiểm kê sau lần uống đó, hãy đối chiếu lại sau khi lưu.',
         ),
         actions: [
           TextButton(
@@ -154,7 +172,7 @@ class _MedicationHistoryScreenState extends State<MedicationHistoryScreen> {
     );
   }
 
-  Widget _todayEntry(MedicationSchedule schedule, DateTime when) {
+  Widget _dayEntry(MedicationSchedule schedule, DateTime when) {
     final med = medications.firstWhere((m) => m.id == schedule.medicationId);
     final matches = logs.where(
       (l) =>
@@ -175,12 +193,13 @@ class _MedicationHistoryScreenState extends State<MedicationHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final today = <({MedicationSchedule s, DateTime at})>[];
+    final isToday = selectedDay == MedicationRules.day(now);
+    final entries = <({MedicationSchedule s, DateTime at})>[];
     for (final s in schedules.where((s) => s.isEnabled)) {
-      if (MedicationRules.occursOn(s, now))
-        today.add((s: s, at: MedicationRules.at(s, now)));
+      if (MedicationRules.occursOn(s, selectedDay))
+        entries.add((s: s, at: MedicationRules.at(s, selectedDay)));
     }
-    today.sort((a, b) => a.at.compareTo(b.at));
+    entries.sort((a, b) => a.at.compareTo(b.at));
     return DefaultTabController(
       length: 2,
       child: MedicationScaffold(
@@ -188,7 +207,7 @@ class _MedicationHistoryScreenState extends State<MedicationHistoryScreen> {
           title: const Text('Theo dõi uống thuốc'),
           bottom: const TabBar(
             tabs: [
-              Tab(text: 'Hôm nay'),
+              Tab(text: 'Theo ngày'),
               Tab(text: 'Lịch sử'),
             ],
           ),
@@ -210,8 +229,19 @@ class _MedicationHistoryScreenState extends State<MedicationHistoryScreen> {
                   ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      OutlinedButton.icon(
+                        onPressed: busy ? null : _chooseDay,
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          isToday
+                              ? 'Hôm nay · Đổi ngày'
+                              : '${selectedDay.day}/${selectedDay.month}/${selectedDay.year} · Đổi ngày',
+                        ),
+                      ),
+                      if (!isToday)
+                        const Text('Ghi bù lần đã đến hạn theo lịch còn bật.'),
                       Text(
-                        'Đã uống hôm nay: ${today.where((e) => logs.any((l) => l['schedule_id'] == e.s.id && l['scheduled_at'] == e.at.toIso8601String() && l['status'] == 'taken')).length}/${today.length} lần theo lịch đang bật',
+                        'Đã uống: ${entries.where((e) => logs.any((l) => l['schedule_id'] == e.s.id && l['scheduled_at'] == e.at.toIso8601String() && l['status'] == 'taken')).length}/${entries.length} lần theo lịch đang bật',
                       ),
                       TextButton.icon(
                         onPressed: busy ? null : _load,
@@ -219,9 +249,11 @@ class _MedicationHistoryScreenState extends State<MedicationHistoryScreen> {
                         label: const Text('Cập nhật'),
                       ),
                       if (busy) const LinearProgressIndicator(),
-                      if (today.isEmpty)
-                        const Text('Hôm nay chưa có lịch đang bật.'),
-                      for (final entry in today) _todayEntry(entry.s, entry.at),
+                      if (entries.isEmpty)
+                        const Text(
+                          'Ngày này không có lần uống theo lịch đang bật.',
+                        ),
+                      for (final entry in entries) _dayEntry(entry.s, entry.at),
                     ],
                   ),
                   ListView(
