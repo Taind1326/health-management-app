@@ -11,12 +11,16 @@ class AuthService {
   // Singleton pattern để dùng chung nguồn dữ liệu trong toàn bộ phiên chạy ứng dụng
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
-  AuthService._internal() {
+  AuthService._internal() : _repository = AuthRepository() {
+    _initSampleData();
+  }
+
+  AuthService.withRepository(AuthRepository repository) : _repository = repository {
     _initSampleData();
   }
 
   // Repository SQLite (dùng cho môi trường app thật)
-  final AuthRepository _repository = AuthRepository();
+  final AuthRepository _repository;
   AuthRepository get repository => _repository;
 
   // Danh sách tài khoản in-memory
@@ -290,10 +294,10 @@ class AuthService {
 
   // Cập nhật hồ sơ sức khỏe
   Future<void> updateProfile(HealthProfile updatedProfile) async {
-    _profiles[updatedProfile.userId] = updatedProfile;
     if (!_isTestingMode) {
       await _repository.updateProfile(updatedProfile);
     }
+    _profiles[updatedProfile.userId] = updatedProfile;
   }
 
   // Lấy danh sách mục tiêu sức khỏe theo userId
@@ -323,22 +327,22 @@ class AuthService {
 
   // Xóa mục tiêu sức khỏe theo userId và goalId (đảm bảo quyền sở hữu)
   Future<void> deleteGoal(int userId, int goalId) async {
-    if (_goals.containsKey(userId)) {
-      _goals[userId]!.removeWhere((g) => g.id == goalId);
-    }
     if (!_isTestingMode) {
       await _repository.deleteGoal(userId, goalId);
+    }
+    if (_goals.containsKey(userId)) {
+      _goals[userId]!.removeWhere((g) => g.id == goalId);
     }
   }
 
   // Xóa mục tiêu sức khỏe theo nội dung text
   Future<void> deleteGoalByText(int userId, String goalText) async {
     final cleanGoal = goalText.trim();
-    if (_goals.containsKey(userId)) {
-      _goals[userId]!.removeWhere((g) => g.goal == cleanGoal);
-    }
     if (!_isTestingMode) {
       await _repository.deleteGoalByText(userId, cleanGoal);
+    }
+    if (_goals.containsKey(userId)) {
+      _goals[userId]!.removeWhere((g) => g.goal == cleanGoal);
     }
   }
 

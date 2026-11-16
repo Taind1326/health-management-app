@@ -4,7 +4,9 @@ import '../../services/auth_service.dart';
 import '../../widgets/tv1_glass_widgets.dart';
 
 class HealthGoalScreen extends StatefulWidget {
-  const HealthGoalScreen({super.key});
+  const HealthGoalScreen({super.key, this.authService});
+
+  final AuthService? authService;
 
   @override
   State<HealthGoalScreen> createState() => _HealthGoalScreenState();
@@ -20,7 +22,7 @@ class _HealthGoalScreenState extends State<HealthGoalScreen> {
   @override
   void initState() {
     super.initState();
-    final authService = AuthService();
+    final authService = widget.authService ?? AuthService();
     _userId = authService.currentUser?.id ?? 1;
     _goals = List.from(authService.getGoals(_userId));
   }
@@ -40,7 +42,7 @@ class _HealthGoalScreenState extends State<HealthGoalScreen> {
 
     try {
       // Thêm mục tiêu vào AuthService in-memory & SQLite (lấy ID tự tăng thực tế)
-      final newGoal = await AuthService().addGoal(_userId, newGoalText);
+      final newGoal = await (widget.authService ?? AuthService()).addGoal(_userId, newGoalText);
 
       if (!mounted) return;
 
@@ -71,7 +73,7 @@ class _HealthGoalScreenState extends State<HealthGoalScreen> {
 
   Future<void> _handleDeleteGoal(HealthGoal item, {bool showSnackBar = true}) async {
     try {
-      await AuthService().deleteGoal(_userId, item.id);
+      await (widget.authService ?? AuthService()).deleteGoal(_userId, item.id);
 
       if (!mounted) return;
 
@@ -225,8 +227,10 @@ class _HealthGoalScreenState extends State<HealthGoalScreen> {
                         ],
                       ),
                     ),
-                    onDismissed: (_) {
-                      _handleDeleteGoal(item, showSnackBar: true);
+                    confirmDismiss: (_) async {
+                      await _handleDeleteGoal(item, showSnackBar: true);
+                      // Danh sách chỉ đổi sau khi SQLite xóa thành công.
+                      return false;
                     },
                     child: Tv1GlassCard(
                       padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
