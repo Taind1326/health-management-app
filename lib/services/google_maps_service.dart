@@ -66,10 +66,10 @@ class GoogleMapsService {
   static const String _apiKey = String.fromEnvironment(
     'ORS_API_KEY',
     defaultValue:
-        'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjkyZTc4YzI4MzcyMTQyYmFhZDExZGNjZThiZDAwZjZlIiwiaCI6Im11cm11cjY0In0=',
+        'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4NDYwY2I2OWM0YTRjNDIxZmNlOGVhOGQ5YzkxZDI5OTRmNjdlNDE1Nzg1ZDg4NDVjNzc3YWQ1IiwiaCI6Im11cm11cjY0In0=',
   );
 
-  static const String _host = 'api.openrouteservice.org';
+  static const String _host = 'api.heigit.org';
 
   /// Đi bộ quá xa thường là do tìm nhầm địa điểm (trùng tên ở tỉnh khác).
   static const double _maxWalkingKm = 50;
@@ -158,7 +158,7 @@ class GoogleMapsService {
       throw const RouteException('Vui lòng nhập địa điểm.');
     }
 
-    final uri = Uri.https(_host, '/geocode/search', {
+    final uri = Uri.https(_host, '/pelias/v1/search', {
       'api_key': _apiKey,
       'text': q,
       'boundary.country': 'VN',
@@ -269,7 +269,7 @@ class GoogleMapsService {
       );
     }
 
-    final uri = Uri.https(_host, '/v2/directions/$profile');
+    final uri = Uri.https(_host, '/openrouteservice/v2/directions/$profile');
     final data = await _send(
       () => _client.post(
         uri,
