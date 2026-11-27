@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 import '../../models/sleep_record.dart';
@@ -182,12 +183,34 @@ class _SleepScreenState extends State<SleepScreen> {
     await _saveRecord(result);
   }
 
-  /// Chỉ cập nhật giao diện sau khi SQLite ghi thành công.
+  /// Ghi SQLite và tải lại lịch sử là hai bước độc lập.
+  /// Nếu tải lịch sử lỗi sau khi đã ghi thành công, chỉ tải lại,
+  /// không thực hiện ghi bản ghi lần thứ hai.
   Future<void> _saveRecord(SleepRecord record) async {
     final repo = _sleepRepo;
     if (repo == null) return;
+
     try {
       await repo.save(record);
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(
+        context,
+        'Không lưu được giấc ngủ: ${errorText(e)}',
+        onRetry: () => _saveRecord(record),
+      );
+      return;
+    }
+
+    await _reloadSavedRecords();
+  }
+
+  /// Chỉ đọc lại dữ liệu đã lưu, không ghi thêm vào SQLite.
+  Future<void> _reloadSavedRecords() async {
+    final repo = _sleepRepo;
+    if (repo == null) return;
+
+    try {
       final list = await repo.getAll();
       if (!mounted) return;
       setState(() => _records = list);
@@ -195,8 +218,8 @@ class _SleepScreenState extends State<SleepScreen> {
       if (!mounted) return;
       showErrorSnack(
         context,
-        'Chưa lưu được giấc ngủ: ${errorText(e)}',
-        onRetry: () => _saveRecord(record),
+        'Đã lưu giấc ngủ, chưa tải lại được lịch sử: ${errorText(e)}',
+        onRetry: _reloadSavedRecords,
       );
     }
   }
